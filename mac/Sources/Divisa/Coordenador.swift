@@ -27,8 +27,14 @@ enum Estado: Equatable {
 @MainActor
 final class Coordenador: ObservableObject {
     @Published private(set) var estado = Estado.local {
-        didSet { if estado != oldValue { diario("estado: %@", "\(estado)") } }
+        didSet {
+            guard estado != oldValue else { return }
+            diario("estado: %@", "\(estado)")
+            if estado == .local { voltouEm = Date() }
+        }
     }
+    /// Logo depois de voltar para cá, a borda não passa o cursor de novo (o cursor costuma estar colado nela).
+    private var voltouEm = Date.distantPast
     @Published private(set) var parceiro: String?
     @Published private(set) var acessibilidade = AXIsProcessTrusted()
     @Published var ativo: Bool { didSet { UserDefaults.standard.set(ativo, forKey: "ativo") } }
@@ -414,7 +420,8 @@ final class Coordenador: ObservableObject {
             voltarParaLocal(avisar: true)
             return true
         case .local:
-            guard tipo == .mouseMoved, ativo, conexao != nil, parceiro != nil else { return true }
+            guard tipo == .mouseMoved, ativo, conexao != nil, parceiro != nil,
+                  Date().timeIntervalSince(voltouEm) > 0.5 else { return true }
             let dx = Double(ev.getIntegerValueField(.mouseEventDeltaX)), dy = Double(ev.getIntegerValueField(.mouseEventDeltaY))
             let p = ev.location
             if empurrandoBorda(p, dx: dx, dy: dy) {

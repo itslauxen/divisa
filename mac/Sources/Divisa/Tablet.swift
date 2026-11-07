@@ -232,6 +232,7 @@ final class Tablet: NSObject, ObservableObject {
         guard let p = ponto(x, y) else { return }
         switch fase {
         case "inicio":
+            diario("tablet: toque em %.0f,%.0f", p.x, p.y)
             botaoApertado = true
             postar(CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left))
             postar(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: p, mouseButton: .left))
