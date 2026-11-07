@@ -4,3 +4,4 @@
 .swiftpm/
 bin/
 obj/
+dist/
