@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2f36"/><stop offset="1" stop-color="#121418"/>
+    </linearGradient>
+    <linearGradient id="azul" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62c5ee"/><stop offset="1" stop-color="#1186ac"/>
+    </linearGradient>
+  </defs>
+  <!-- Fundo cheio: o macOS arredonda as bordas sozinho. -->
+  <rect width="1024" height="1024" fill="url(#fundo)"/>
+  <!-- Duas telas lado a lado; a da direita acesa, com o cursor passando entre elas. -->
+  <rect x="150" y="300" width="330" height="400" rx="46" fill="none" stroke="#e8eaee" stroke-width="44"/>
+  <rect x="544" y="300" width="330" height="400" rx="46" fill="url(#azul)"/>
+  <rect x="544" y="300" width="330" height="400" rx="46" fill="none" stroke="#e8eaee" stroke-width="44"/>
+  <path d="M430 450 L430 640 L475 598 L505 662 L540 646 L510 584 L570 580 Z" fill="#ffffff" stroke="#121418" stroke-width="18" stroke-linejoin="round"/>
+</svg>

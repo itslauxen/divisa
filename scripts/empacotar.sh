@@ -15,6 +15,7 @@ rm -rf dist && mkdir -p dist
   cp "$BIN/Divisa" "$APP/Contents/MacOS/Divisa"
   cp Info.plist "$APP/Contents/Info.plist"
   cp -R web "$APP/Contents/Resources/web"
+  cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
   codesign --force --sign - "$APP"
 )
 (cd dist && ditto -c -k --keepParent Divisa.app Divisa-mac.zip && rm -rf Divisa.app)
