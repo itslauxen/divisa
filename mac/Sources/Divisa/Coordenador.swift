@@ -389,16 +389,26 @@ final class Coordenador: ObservableObject {
         let eu = Unmanaged.passUnretained(self).toOpaque()
         guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
                                         eventsOfInterest: mascara, callback: { _, tipo, ev, eu in
+            // Roda numa linha própria. Os eventos que nós mesmos injetamos passam direto, sem esperar
+            // a fila principal (que está ocupada com a rede): senão o cursor controlado de longe engasga.
+            if ev.getIntegerValueField(.eventSourceUserData) == Coordenador.marca { return Unmanaged.passUnretained(ev) }
             let c = Unmanaged<Coordenador>.fromOpaque(eu!).takeUnretainedValue()
-            let segue = MainActor.assumeIsolated { c.tratar(tipo, ev) }
+            var segue = true
+            DispatchQueue.main.sync { segue = MainActor.assumeIsolated { c.tratar(tipo, ev) } }
             return segue ? Unmanaged.passUnretained(ev) : nil
         }, userInfo: eu) else {
             diario("sem permissão de Acessibilidade para ler o mouse")
             return
         }
         let fonte = CFMachPortCreateRunLoopSource(nil, t, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), fonte, .commonModes)
-        CGEvent.tapEnable(tap: t, enable: true)
+        let linha = Thread {
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), fonte, .commonModes)
+            CGEvent.tapEnable(tap: t, enable: true)
+            CFRunLoopRun()
+        }
+        linha.name = "divisa.toque"
+        linha.qualityOfService = .userInteractive
+        linha.start()
         toque = t
         diario("lendo mouse e teclado")
     }

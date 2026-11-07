@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -41,6 +42,11 @@ sealed class Coordenador
     private Point pino, centro;
     private uint ultimaAreaEnviada;
     private DateTime voltouEm = DateTime.MinValue;
+    // Movimento juntado: o mouse lê até 1000 vezes por segundo, mas basta mandar a cada 4 ms.
+    private int movX, movY;
+    private long ultimoMov;
+    private readonly Stopwatch cronometro = Stopwatch.StartNew();
+    private readonly System.Windows.Forms.Timer sobraMov = new() { Interval = 8 };
 
     // Local: última posição do mouse físico e botões físicos apertados
     private Point ultimo;
@@ -80,6 +86,7 @@ sealed class Coordenador
         descoberta.Iniciar();
 
         relogio.Tick += (_, _) => Batimento();
+        sobraMov.Tick += (_, _) => { sobraMov.Stop(); EnviarMov(); };
         relogio.Start();
 
         var modulo = GetModuleHandle(null);
@@ -430,14 +437,25 @@ sealed class Coordenador
         _ => dy < 0,
     };
 
+    private void EnviarMov()
+    {
+        if (movX != 0 || movY != 0) Enviar(new() { ["t"] = "mov", ["dx"] = movX, ["dy"] = movY });
+        movX = movY = 0;
+        ultimoMov = cronometro.ElapsedMilliseconds;
+    }
+
     private void Mandar(int tipo, MSLLHOOKSTRUCT m)
     {
+        // Clique, roda ou tecla: o movimento juntado vai antes, para manter a ordem.
+        if (tipo != WM_MOUSEMOVE) EnviarMov();
         switch (tipo)
         {
             case WM_MOUSEMOVE:
-                int dx = m.pt.X - centro.X, dy = m.pt.Y - centro.Y;
-                if (dx != 0 || dy != 0) Enviar(new() { ["t"] = "mov", ["dx"] = dx, ["dy"] = dy });
-                break;
+                movX += m.pt.X - centro.X;
+                movY += m.pt.Y - centro.Y;
+                if (cronometro.ElapsedMilliseconds - ultimoMov >= 4) EnviarMov();
+                else if (!sobraMov.Enabled) sobraMov.Start(); // manda o resto se o mouse parar
+                return;
             case WM_LBUTTONDOWN: Enviar(new() { ["t"] = "botao", ["b"] = "esq", ["d"] = true }); break;
             case WM_LBUTTONUP: Enviar(new() { ["t"] = "botao", ["b"] = "esq", ["d"] = false }); break;
             case WM_RBUTTONDOWN: Enviar(new() { ["t"] = "botao", ["b"] = "dir", ["d"] = true }); break;
@@ -477,6 +495,7 @@ sealed class Coordenador
             case Estado.Mandando:
                 if (hid != 0)
                 {
+                    EnviarMov();
                     if (Config.TrocarCtrl) hid = Teclas.Trocar(hid);
                     Enviar(new() { ["t"] = "tecla", ["hid"] = hid, ["d"] = desce });
                 }

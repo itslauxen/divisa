@@ -109,14 +109,14 @@ sealed class Conexao
     public void Enviar(Dictionary<string, object> msg)
     {
         if (fechada || fluxo == null) return;
-        var dados = JsonSerializer.SerializeToUtf8Bytes(msg);
+        // JSON e a quebra de linha num pacote só.
+        var json = JsonSerializer.SerializeToUtf8Bytes(msg);
+        var dados = new byte[json.Length + 1];
+        json.CopyTo(dados, 0);
+        dados[^1] = 0x0A;
         try
         {
-            lock (travaEnvio)
-            {
-                fluxo.Write(dados);
-                fluxo.WriteByte(0x0A);
-            }
+            lock (travaEnvio) fluxo.Write(dados);
         }
         catch (Exception) { Fechar(); }
     }
