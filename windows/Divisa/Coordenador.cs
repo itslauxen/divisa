@@ -157,7 +157,8 @@ sealed class Coordenador
 
     private void Enviar(Dictionary<string, object> msg)
     {
-        if (msg["t"] is not ("mov" or "ping" or "area")) Log.Escrever($"-> {msg["t"]} (estado {Estado})");
+        // Teclas e movimento não vão para o log: gravar disco dentro do gancho atrasa a entrada.
+        if (msg["t"] is not ("mov" or "ping" or "area" or "tecla")) Log.Escrever($"-> {msg["t"]} (estado {Estado})");
         conexao?.Enviar(msg);
     }
 
