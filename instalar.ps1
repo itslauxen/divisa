@@ -14,8 +14,13 @@ Start-Sleep -Milliseconds 500
 Add-Type -Namespace Divisa -Name Cursores -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'
 [Divisa.Cursores]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0) | Out-Null
 
-Write-Host 'Baixando a Divisa...'
-Invoke-WebRequest 'https://github.com/itslauxen/divisa/releases/latest/download/Divisa-windows.exe' -OutFile $exe
+# $env:DIVISA_EXE aponta para um Divisa-windows.exe já baixado (para testar o instalador sem o download).
+if ($env:DIVISA_EXE) {
+    Copy-Item $env:DIVISA_EXE $exe -Force
+} else {
+    Write-Host 'Baixando a Divisa...'
+    Invoke-WebRequest 'https://github.com/itslauxen/divisa/releases/latest/download/Divisa-windows.exe' -OutFile $exe
+}
 Unblock-File $exe
 
 # Atalho no Menu Iniciar.
