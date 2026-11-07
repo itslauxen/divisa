@@ -5,6 +5,9 @@ let package = Package(
     name: "Divisa",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "Divisa", path: "Sources/Divisa")
+        // Declarações da API privada de tela virtual do CoreGraphics.
+        .target(name: "CGVirtual", path: "Sources/CGVirtual"),
+        .executableTarget(name: "Divisa", dependencies: ["CGVirtual"], path: "Sources/Divisa",
+                          linkerSettings: [.linkedFramework("ScreenCaptureKit")])
     ]
 )

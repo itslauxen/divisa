@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Divisa · Tela do Mac</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  #aviso { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    color: #f2f2f4; font: 500 17px/1.4 -apple-system, system-ui, Roboto, sans-serif; text-align: center; background: #0c0d10; padding: 24px; }
+  #aviso b { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  #aviso small { color: #9a9ca3; font-size: 14px; max-width: 420px; }
+  #botao { margin-top: 6px; padding: 14px 28px; border-radius: 14px; background: #38a6cf; color: #fff; font-weight: 600; font-size: 17px; }
+  .escondido { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="tela"></canvas>
+<div id="aviso">
+  <b>Divisa</b>
+  <span id="texto">Toque para usar este tablet como tela do Mac.</span>
+  <span id="botao">Começar</span>
+  <small>Dica: dois dedos rolam a página, segurar o dedo é o clique direito. Para a tela não apagar, aumente o tempo de tela do tablet.</small>
+</div>
+<script>
+const canvas = document.getElementById('tela');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+const aviso = document.getElementById('aviso');
+const texto = document.getElementById('texto');
+let ws = null, comecou = false, desenhando = false, proximo = null;
+
+function tamanhoEmPixels() {
+  const dpr = window.devicePixelRatio || 1;
+  return { w: Math.round(window.innerWidth * dpr), h: Math.round(window.innerHeight * dpr) };
+}
+
+function enviar(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+
+function conectar() {
+  ws = new WebSocket(`ws://${location.hostname}:24803`);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { aviso.classList.add('escondido'); enviar({ t: 'tela', ...tamanhoEmPixels() }); };
+  ws.onmessage = e => { if (typeof e.data !== 'string') mostrar(e.data); };
+  ws.onclose = () => {
+    texto.textContent = 'Reconectando ao Mac…';
+    document.getElementById('botao').classList.add('escondido');
+    aviso.classList.remove('escondido');
+    setTimeout(conectar, 1000);
+  };
+}
+
+// Só o quadro mais novo importa: se chegar outro enquanto um decodifica, o do meio é descartado.
+function mostrar(buf) {
+  proximo = buf;
+  if (desenhando) return;
+  desenhando = true;
+  const atual = proximo; proximo = null;
+  createImageBitmap(new Blob([atual], { type: 'image/jpeg' })).then(img => {
+    if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }
+    ctx.drawImage(img, 0, 0);
+    img.close();
+  }).catch(() => {}).finally(() => { desenhando = false; if (proximo) mostrar(proximo); });
+}
+
+let redimensionar;
+window.addEventListener('resize', () => {
+  clearTimeout(redimensionar);
+  redimensionar = setTimeout(() => enviar({ t: 'tela', ...tamanhoEmPixels() }), 500);
+});
+
+document.getElementById('aviso').addEventListener('click', async () => {
+  if (comecou) return;
+  comecou = true;
+  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) {}
+  try { await screen.orientation.lock('landscape'); } catch (e) {}
+  setTimeout(conectar, 300);
+});
+
+// ---- Toques ----
+// Fração (0…1) do ponto dentro da imagem desenhada (o canvas usa "contain", então pode ter faixas pretas).
+function fracao(t) {
+  const r = canvas.getBoundingClientRect();
+  const escala = Math.min(r.width / canvas.width, r.height / canvas.height);
+  const w = canvas.width * escala, h = canvas.height * escala;
+  const x0 = r.left + (r.width - w) / 2, y0 = r.top + (r.height - h) / 2;
+  return { x: (t.clientX - x0) / w, y: (t.clientY - y0) / h };
+}
+
+const LIMIAR = 8, SEGURAR = 550;
+let inicio = null, apertado = false, segurar = null, doisDedos = null;
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    inicio = { x: t.clientX, y: t.clientY, f: fracao(t) };
+    apertado = false;
+    clearTimeout(segurar);
+    segurar = setTimeout(() => { if (inicio && !apertado) { enviar({ t: 'direito', ...inicio.f }); inicio = null; } }, SEGURAR);
+  } else if (e.touches.length === 2) {
+    clearTimeout(segurar);
+    if (apertado) { enviar({ t: 'toque', fase: 'fim', ...fracao(e.touches[0]) }); apertado = false; }
+    inicio = null;
+    doisDedos = centro(e.touches);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length >= 2 && doisDedos) {
+    const c = centro(e.touches), dpr = window.devicePixelRatio || 1;
+    enviar({ t: 'rolar', dx: (c.x - doisDedos.x) * dpr, dy: (c.y - doisDedos.y) * dpr });
+    doisDedos = c;
+    return;
+  }
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  if (inicio && !apertado && Math.hypot(t.clientX - inicio.x, t.clientY - inicio.y) > LIMIAR) {
+    clearTimeout(segurar);
+    enviar({ t: 'toque', fase: 'inicio', ...inicio.f }); // arrastar começa onde o dedo encostou
+    apertado = true;
+  }
+  if (apertado) enviar({ t: 'toque', fase: 'move', ...fracao(t) });
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  clearTimeout(segurar);
+  if (e.touches.length === 0) {
+    const t = e.changedTouches[0];
+    if (apertado) enviar({ t: 'toque', fase: 'fim', ...fracao(t) });
+    else if (inicio) { enviar({ t: 'toque', fase: 'inicio', ...inicio.f }); enviar({ t: 'toque', fase: 'fim', ...inicio.f }); }
+    inicio = null; apertado = false; doisDedos = null;
+  } else if (e.touches.length === 1) {
+    doisDedos = null;
+  }
+}, { passive: false });
+
+function centro(ts) { return { x: (ts[0].clientX + ts[1].clientX) / 2, y: (ts[0].clientY + ts[1].clientY) / 2 }; }
+
+// Mouse (para testar a página num computador).
+let mouseApertado = false;
+canvas.addEventListener('mousedown', e => { mouseApertado = true; enviar({ t: 'toque', fase: 'inicio', ...fracao(e) }); });
+canvas.addEventListener('mousemove', e => { if (mouseApertado) enviar({ t: 'toque', fase: 'move', ...fracao(e) }); });
+canvas.addEventListener('mouseup', e => { mouseApertado = false; enviar({ t: 'toque', fase: 'fim', ...fracao(e) }); });
+canvas.addEventListener('contextmenu', e => { e.preventDefault(); enviar({ t: 'direito', ...fracao(e) }); });
+canvas.addEventListener('wheel', e => { e.preventDefault(); enviar({ t: 'rolar', dx: -e.deltaX, dy: -e.deltaY }); }, { passive: false });
+</script>
+</body>
+</html>
