@@ -17,6 +17,8 @@ static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // coordenadas em pixels reais, iguais às dos ganchos
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        // Uma execução anterior que morreu no meio pode ter deixado os cursores vazios: restaura ao abrir.
+        Nativo.SystemParametersInfo(Nativo.SPI_SETCURSORS, 0, IntPtr.Zero, 0);
         // Se algo der errado, o cursor nunca fica invisível.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Cursor.Mostrar();
         AppDomain.CurrentDomain.UnhandledException += (_, _) => Cursor.Mostrar();
