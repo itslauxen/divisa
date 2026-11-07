@@ -92,6 +92,7 @@ sealed class Coordenador
         var modulo = GetModuleHandle(null);
         idMouse = SetWindowsHookEx(WH_MOUSE_LL, ganchoMouse, modulo, 0);
         idTeclado = SetWindowsHookEx(WH_KEYBOARD_LL, ganchoTeclado, modulo, 0);
+        Log.Escrever($"iniciado: id {Config.Id}, lado {Config.Lado}, telas {Area}, ganchos {idMouse != IntPtr.Zero}/{idTeclado != IntPtr.Zero}");
     }
 
     public void Parar()
@@ -137,12 +138,14 @@ sealed class Coordenador
 
     private void Usar(Conexao c)
     {
+        Log.Escrever("conectado");
         conexao = c;
         ultimoRecebido = DateTime.Now;
         c.AoReceber += Receber;
         c.AoFechar += () =>
         {
             if (conexao != c) return;
+            Log.Escrever("conexão fechada");
             conexao = null;
             Parceiro = null;
             VoltarParaLocal(avisar: false);
@@ -152,7 +155,11 @@ sealed class Coordenador
         c.Enviar(new() { ["t"] = "ola", ["v"] = 1, ["id"] = Config.Id, ["nome"] = Environment.MachineName, ["so"] = "windows" });
     }
 
-    private void Enviar(Dictionary<string, object> msg) => conexao?.Enviar(msg);
+    private void Enviar(Dictionary<string, object> msg)
+    {
+        if (msg["t"] is not ("mov" or "ping" or "area")) Log.Escrever($"-> {msg["t"]} (estado {Estado})");
+        conexao?.Enviar(msg);
+    }
 
     private void Batimento()
     {
@@ -164,7 +171,9 @@ sealed class Coordenador
     private void Receber(JsonObject msg)
     {
         ultimoRecebido = DateTime.Now;
-        switch ((string?)msg["t"])
+        var tipoMsg = (string?)msg["t"];
+        if (tipoMsg is not ("mov" or "ping")) Log.Escrever($"<- {msg.ToJsonString()} (estado {Estado})");
+        switch (tipoMsg)
         {
             case "ola":
                 Parceiro = (string?)msg["nome"] ?? "Outro computador";

@@ -24,6 +24,29 @@ static class Program
     }
 }
 
+/// Registro simples em %LOCALAPPDATA%\Divisa\Divisa.log, para diagnosticar sem ver a tela.
+static class Log
+{
+    private static readonly object trava = new();
+    private static readonly string arquivo = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Divisa", "Divisa.log");
+
+    public static void Escrever(string texto)
+    {
+        try
+        {
+            lock (trava)
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(arquivo)!);
+                var info = new System.IO.FileInfo(arquivo);
+                if (info.Exists && info.Length > 2_000_000) info.Delete();
+                System.IO.File.AppendAllText(arquivo, $"{DateTime.Now:HH:mm:ss.fff} {texto}{Environment.NewLine}");
+            }
+        }
+        catch { }
+    }
+}
+
 /// Ícone na bandeja do Windows com o estado e os ajustes.
 sealed class Bandeja : ApplicationContext
 {
