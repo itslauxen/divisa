@@ -49,6 +49,8 @@ final class Coordenador: ObservableObject {
     private var descoberta: Descoberta?
     private let servidor = Servidor()
     private var conexao: Conexao?
+    /// Desde quando ouvimos o parceiro sem estar conectados (só para quem tem o id maior).
+    private var anunciosSemConexao: Date?
     private var ultimoRecebido = Date()
     private var relogio: Timer?
     private var toque: CFMachPort?
@@ -109,8 +111,14 @@ final class Coordenador: ObservableObject {
 
     private func ouvir(_ msg: Mensagem, ip: String) {
         guard msg["t"] as? String == "anuncio", let outro = msg["id"] as? String, outro != id else { return }
-        // Quem tem o id menor conecta; o outro só espera.
-        guard conexao == nil, id < outro else { return }
+        guard conexao == nil else { anunciosSemConexao = nil; return }
+        // Quem tem o id menor conecta na hora. O outro espera 6 s: se o firewall de lá bloquear a entrada, conecta ele.
+        if id > outro {
+            let desde = anunciosSemConexao ?? Date()
+            anunciosSemConexao = desde
+            guard Date().timeIntervalSince(desde) > 6 else { return }
+            anunciosSemConexao = nil
+        }
         let porta = (msg["porta"] as? Int).flatMap { UInt16(exactly: $0) } ?? Portas.tcp
         diario("achei %@ em %@", msg["nome"] as? String ?? "?", ip)
         usar(Conexao.para(ip: ip, porta: porta))

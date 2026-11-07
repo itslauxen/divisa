@@ -28,6 +28,8 @@ sealed class Coordenador
     private readonly Servidor servidor;
     private Descoberta? descoberta;
     private Conexao? conexao;
+    /// Desde quando ouvimos o parceiro sem estar conectados (só para quem tem o id maior).
+    private DateTime? anunciosSemConexao;
     private DateTime ultimoRecebido = DateTime.Now;
     private readonly System.Windows.Forms.Timer relogio = new() { Interval = 2000 };
 
@@ -106,8 +108,14 @@ sealed class Coordenador
     private void Ouvir(JsonObject msg, string ip)
     {
         if ((string?)msg["t"] != "anuncio" || msg["id"]?.GetValue<string>() is not string outro || outro == Config.Id) return;
-        // Quem tem o id menor conecta; o outro só espera.
-        if (conexao != null || string.CompareOrdinal(Config.Id, outro) >= 0) return;
+        if (conexao != null) { anunciosSemConexao = null; return; }
+        // Quem tem o id menor conecta na hora. O outro espera 6 s: se o firewall de lá bloquear a entrada, conecta ele.
+        if (string.CompareOrdinal(Config.Id, outro) > 0)
+        {
+            anunciosSemConexao ??= DateTime.Now;
+            if ((DateTime.Now - anunciosSemConexao.Value).TotalSeconds <= 6) return;
+            anunciosSemConexao = null;
+        }
         var porta = msg["porta"]?.GetValue<int>() ?? Portas.Tcp;
         _ = ConectarEm(ip, porta);
     }

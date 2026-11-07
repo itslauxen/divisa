@@ -29,7 +29,7 @@ A cada 2 s, cada app manda por broadcast (`255.255.255.255:24801`) um JSON UTF-8
 - `id`: UUID gerado na primeira execução e guardado. Nunca muda.
 - `so`: `"mac"` ou `"windows"`.
 - Ignore anúncios com o próprio `id`.
-- **Quem conecta**: o app com o `id` **menor** (comparação de texto simples) abre a conexão TCP para o IP de onde veio o anúncio, na `porta` anunciada. O outro só espera. Isso evita duas conexões ao mesmo tempo.
+- **Quem conecta**: o app com o `id` **menor** (comparação de texto simples) abre a conexão TCP na hora, para o IP de onde veio o anúncio, na `porta` anunciada. O de `id` maior espera; se continuar ouvindo anúncios **por mais de 6 s sem conexão** (por exemplo, o firewall dele bloqueia a entrada), ele mesmo conecta. Se as duas conexões chegarem a abrir, quem já tem uma fecha a nova.
 - Cada app aceita um parceiro só. Com uma conexão aberta, anúncios de outros são ignorados.
 
 ## Conexão (TCP 24800)
