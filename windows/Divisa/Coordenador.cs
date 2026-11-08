@@ -152,7 +152,14 @@ sealed class Coordenador
             AoMudar?.Invoke();
         };
         c.Iniciar();
-        c.Enviar(new() { ["t"] = "ola", ["v"] = 1, ["id"] = Config.Id, ["nome"] = Environment.MachineName, ["so"] = "windows" });
+        c.Enviar(new() { ["t"] = "ola", ["v"] = 1, ["id"] = Config.Id, ["nome"] = Environment.MachineName, ["so"] = "windows", ["teclado"] = Teclado() });
+    }
+
+    /// KLID do layout de teclado ativo (ex.: "00010416" = Português Brasil ABNT2), para o outro lado usar o equivalente.
+    private static string Teclado()
+    {
+        var nome = new System.Text.StringBuilder(9);
+        return GetKeyboardLayoutName(nome) ? nome.ToString() : "";
     }
 
     private void Enviar(Dictionary<string, object> msg)
@@ -273,6 +280,7 @@ sealed class Coordenador
         }
         Enviar(ComFracao("entrar", Fracao(p)));
         Estado = Estado.Mandando;
+        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: false);
         pino = p;
         // O cursor fica parado no meio da tela principal (escondido); cada movimento vira delta a partir dali.
         var tela = Screen.PrimaryScreen!.Bounds;
@@ -291,6 +299,7 @@ sealed class Coordenador
         ultimo = p;
         voltouEm = DateTime.Now;
         Cursor.Mostrar();
+        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: true);
         AoMudar?.Invoke();
     }
 
@@ -301,6 +310,7 @@ sealed class Coordenador
         Estado = Estado.Obedecendo;
         cursor = PontoNaBorda(fracao, 1);
         Cursor.Mostrar();
+        if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: true);
         MoverPara(cursor);
         AoMudar?.Invoke();
     }
@@ -313,6 +323,7 @@ sealed class Coordenador
             SoltarTudo();
             Estado = Estado.Local;
             Enviar(ComFracao("sair", f));
+            if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: false);
             AoMudar?.Invoke();
             return;
         }
@@ -506,7 +517,8 @@ sealed class Coordenador
                 if (hid != 0)
                 {
                     EnviarMov();
-                    if (Config.TrocarCtrl) hid = Teclas.Trocar(hid);
+                    if (Config.AltComoCmd) hid = Teclas.ComoMac(hid);
+                    else if (Config.TrocarCtrl) hid = Teclas.Trocar(hid);
                     Enviar(new() { ["t"] = "tecla", ["hid"] = hid, ["d"] = desce });
                 }
                 return (IntPtr)1; // engole

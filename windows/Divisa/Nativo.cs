@@ -52,6 +52,8 @@ static class Nativo
     public static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool GetKeyboardLayoutName(System.Text.StringBuilder pwszKLID);
 
     // Cursor invisível: troca os cursores do sistema por um vazio e depois restaura.
     [DllImport("user32.dll")]

@@ -36,6 +36,13 @@ static class Teclas
 
     public static readonly Dictionary<int, int> DoHid = ParaHid.GroupBy(p => p.Value).ToDictionary(g => g.Key, g => g.First().Key);
 
+    /// Teclado do PC usado como o do Mac, pela posição: o Alt esquerdo (ao lado do espaço) vira Cmd e a tecla
+    /// Windows vira Option; o Ctrl continua Ctrl. O Alt direito (AltGr no ABNT2) fica Option, para os símbolos.
+    public static int ComoMac(int hid) => hid switch
+    {
+        0xE2 => 0xE3, 0xE3 => 0xE2, 0xE7 => 0xE6, _ => hid,
+    };
+
     /// Troca Ctrl ↔ Cmd/Win, para Cmd+C no Mac virar Ctrl+C no Windows e vice-versa.
     public static int Trocar(int hid) => hid switch
     {

@@ -12,6 +12,11 @@ sealed class Config
     public Lado Lado { get; set; } = Lado.Direita;
     /// Ctrl ↔ Cmd/Win, para Cmd+C no Mac virar Ctrl+C aqui e Ctrl+C daqui virar Cmd+C no Mac.
     public bool TrocarCtrl { get; set; } = true;
+    /// Mandando no Mac com o teclado daqui: Alt vira Cmd e Windows vira Option, como as posições no teclado do Mac
+    /// (Ctrl continua Ctrl). Quando ligado, vale no lugar do TrocarCtrl para o que sai daqui.
+    public bool AltComoCmd { get; set; } = true;
+    /// Onda de "portal" na borda quando o cursor passa de um computador para o outro.
+    public bool Portal { get; set; } = true;
 
     private static string Arquivo => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Divisa", "config.json");
 

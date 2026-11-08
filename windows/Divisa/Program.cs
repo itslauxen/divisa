@@ -54,7 +54,7 @@ sealed class Bandeja : ApplicationContext
 {
     private readonly Coordenador c;
     private readonly NotifyIcon icone;
-    private readonly ToolStripMenuItem estado, ativo, trocar, iniciarComWindows;
+    private readonly ToolStripMenuItem estado, ativo, trocar, altCmd, portal, iniciarComWindows;
     private readonly ToolStripMenuItem[] lados;
 
     public Bandeja()
@@ -67,6 +67,8 @@ sealed class Bandeja : ApplicationContext
         estado = new ToolStripMenuItem("Procurando o outro computador…") { Enabled = false };
         ativo = new ToolStripMenuItem("Ativo", null, (_, _) => { c.Config.Ativo = !c.Config.Ativo; Salvar(); }) { Checked = c.Config.Ativo };
         trocar = new ToolStripMenuItem("Trocar Ctrl e Cmd", null, (_, _) => { c.Config.TrocarCtrl = !c.Config.TrocarCtrl; Salvar(); }) { Checked = c.Config.TrocarCtrl };
+        altCmd = new ToolStripMenuItem("No Mac, Alt vira Cmd (como no teclado do Mac)", null, (_, _) => { c.Config.AltComoCmd = !c.Config.AltComoCmd; Salvar(); }) { Checked = c.Config.AltComoCmd };
+        portal = new ToolStripMenuItem("Animação de portal", null, (_, _) => { c.Config.Portal = !c.Config.Portal; Salvar(); }) { Checked = c.Config.Portal };
         iniciarComWindows = new ToolStripMenuItem("Iniciar com o Windows", null, (_, _) => AlternarInicio()) { Checked = IniciaComWindows };
 
         var nomes = new[] { ("À esquerda", Lado.Esquerda), ("À direita", Lado.Direita), ("Em cima", Lado.Acima), ("Embaixo", Lado.Abaixo) };
@@ -77,7 +79,7 @@ sealed class Bandeja : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
-            estado, new ToolStripSeparator(), ativo, menuLado, trocar,
+            estado, new ToolStripSeparator(), ativo, menuLado, trocar, altCmd, portal,
             new ToolStripMenuItem("Conectar por IP…", null, (_, _) => PedirIp()),
             iniciarComWindows, new ToolStripSeparator(),
             new ToolStripMenuItem("Sair da Divisa", null, (_, _) => Sair()),
@@ -107,6 +109,8 @@ sealed class Bandeja : ApplicationContext
         icone.Icon = DesenharIcone(c.Estado != Estado.Local);
         ativo.Checked = c.Config.Ativo;
         trocar.Checked = c.Config.TrocarCtrl;
+        altCmd.Checked = c.Config.AltComoCmd;
+        portal.Checked = c.Config.Portal;
         foreach (var l in lados) l.Checked = (Lado)l.Tag! == c.Config.Lado;
     }
 
