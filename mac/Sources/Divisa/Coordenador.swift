@@ -246,6 +246,7 @@ final class Coordenador: ObservableObject {
         enviar(lado.vertical ? ["t": "entrar", "y": fracao(de: p)] : ["t": "entrar", "x": fracao(de: p)])
         estado = .mandando
         pino = p
+        Portal.saida(em: p)
         CGAssociateMouseAndMouseCursorPosition(0)
         Cursor.esconder()
     }
@@ -254,7 +255,9 @@ final class Coordenador: ObservableObject {
     private func soltarCursor(em fracao: Double?) {
         estado = .local
         CGAssociateMouseAndMouseCursorPosition(1)
-        CGWarpMouseCursorPosition(fracao.map { pontoNaBorda($0, dentro: 2) } ?? pino)
+        let volta = fracao.map { pontoNaBorda($0, dentro: 2) } ?? pino
+        CGWarpMouseCursorPosition(volta)
+        if fracao != nil { Portal.entrada(em: volta) }
         Cursor.mostrar()
     }
 
@@ -294,6 +297,7 @@ final class Coordenador: ObservableObject {
         estado = .obedecendo
         cursor = pontoNaBorda(fracao, dentro: 1)
         CGWarpMouseCursorPosition(cursor)
+        Portal.entrada(em: cursor)
         Cursor.mostrar()
         postar(CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: cursor, mouseButton: .left))
     }
@@ -302,6 +306,7 @@ final class Coordenador: ObservableObject {
         if empurrandoBorda(cursor, dx: dx, dy: dy) && botoesApertados.isEmpty {
             let f = fracao(de: cursor)
             soltarTudo()
+            Portal.saida(em: cursor)
             estado = .local
             enviar(lado.vertical ? ["t": "sair", "y": f] : ["t": "sair", "x": f])
             return

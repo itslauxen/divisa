@@ -28,6 +28,7 @@ private struct Painel: View {
     @ObservedObject var tablet: Tablet
     @State private var ip = ""
     @State private var abrirAoIniciar = SMAppService.mainApp.status == .enabled
+    @State private var portal = Portal.ligado
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -81,6 +82,7 @@ private struct Painel: View {
 
             Text("Atalho de emergência: ⌃⌥⇧⎋ traz o mouse de volta.").font(.caption2).foregroundStyle(.tertiary)
             Divider()
+            Toggle("Animação de portal", isOn: Binding(get: { portal }, set: { Portal.ligado = $0; portal = $0 }))
             Toggle("Abrir ao iniciar o Mac", isOn: Binding(get: { abrirAoIniciar }, set: { liga in
                 try? liga ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                 abrirAoIniciar = SMAppService.mainApp.status == .enabled
