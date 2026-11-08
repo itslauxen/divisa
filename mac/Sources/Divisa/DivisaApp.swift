@@ -82,6 +82,8 @@ private struct Painel: View {
 
             Text("Atalho de emergência: ⌃⌥⇧⎋ traz o mouse de volta.").font(.caption2).foregroundStyle(.tertiary)
             Divider()
+            Toggle("Usar o layout do teclado do outro computador", isOn: $c.usarLayoutDoOutro)
+                .help("Enquanto o Windows manda, o Mac troca para o layout do teclado dele (ex.: ABNT2) e volta depois.")
             Toggle("Animação de portal", isOn: Binding(get: { portal }, set: { Portal.ligado = $0; portal = $0 }))
             Toggle("Abrir ao iniciar o Mac", isOn: Binding(get: { abrirAoIniciar }, set: { liga in
                 try? liga ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()

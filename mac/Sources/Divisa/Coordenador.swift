@@ -31,6 +31,9 @@ final class Coordenador: ObservableObject {
             guard estado != oldValue else { return }
             diario("estado: %@", "\(estado)")
             if estado == .local { voltouEm = Date() }
+            // Enquanto o outro manda, o layout do Mac acompanha o do teclado dele.
+            if estado == .obedecendo, usarLayoutDoOutro, let alvo = Layout.doMac(paraWindows: layoutDoParceiro) { Layout.usar(alvo) }
+            if oldValue == .obedecendo { Layout.restaurar() }
         }
     }
     /// Logo depois de voltar para cá, a borda não passa o cursor de novo (o cursor costuma estar colado nela).
@@ -39,6 +42,9 @@ final class Coordenador: ObservableObject {
     @Published private(set) var acessibilidade = AXIsProcessTrusted()
     @Published var ativo: Bool { didSet { UserDefaults.standard.set(ativo, forKey: "ativo") } }
     @Published var lado: Lado { didSet { UserDefaults.standard.set(lado.rawValue, forKey: "lado") } }
+    @Published var usarLayoutDoOutro: Bool { didSet { UserDefaults.standard.set(usarLayoutDoOutro, forKey: "layoutDoOutro") } }
+    /// Layout de teclado informado pelo parceiro no "ola" (no Windows, o KLID, ex.: "00010416").
+    private var layoutDoParceiro: String?
 
     let id: String
     let nome = Host.current().localizedName ?? "Mac"
@@ -74,6 +80,7 @@ final class Coordenador: ObservableObject {
         }
         ativo = ud.object(forKey: "ativo") as? Bool ?? true
         lado = Lado(rawValue: ud.string(forKey: "lado") ?? "") ?? .esquerda
+        usarLayoutDoOutro = ud.object(forKey: "layoutDoOutro") as? Bool ?? true
     }
 
     func iniciar() {
@@ -137,7 +144,7 @@ final class Coordenador: ObservableObject {
         }
         c.iniciar { [weak self] in
             guard let self else { return }
-            c.enviar(["t": "ola", "v": 1, "id": self.id, "nome": self.nome, "so": "mac"])
+            c.enviar(["t": "ola", "v": 1, "id": self.id, "nome": self.nome, "so": "mac", "teclado": Layout.atual])
         }
     }
 
@@ -162,6 +169,7 @@ final class Coordenador: ObservableObject {
         switch msg["t"] as? String {
         case "ola":
             parceiro = msg["nome"] as? String ?? "Outro computador"
+            layoutDoParceiro = msg["teclado"] as? String
             diario("conectado a %@ (%@)", parceiro ?? "?", msg["so"] as? String ?? "?")
         case "entrar":
             guard ativo else { return enviar(["t": "liberar"]) }
