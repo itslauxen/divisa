@@ -18,13 +18,13 @@ sealed class Config
     /// Onda de "portal" na borda quando o cursor passa de um computador para o outro.
     public bool Portal { get; set; } = true;
     /// Qual efeito de portal: "pixels", "hexagonos" (campo de força) ou "elastica".
-    public string PortalEfeito { get; set; } = "pixels";
+    public string PortalEfeito { get; set; } = "elastica";
     /// Cor do efeito, em #RRGGBB.
-    public string PortalCor { get; set; } = "#009425";
+    public string PortalCor { get; set; } = "#38A6CF";
     /// 1,0 = duração original do efeito; maior = mais rápido.
-    public double PortalVelocidade { get; set; } = 1.2;
+    public double PortalVelocidade { get; set; } = 1.8;
     /// 1,0 = tamanho original; menor = menor.
-    public double PortalTamanho { get; set; } = 0.2;
+    public double PortalTamanho { get; set; } = 0.55;
 
     private static string Arquivo => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Divisa", "config.json");
 

@@ -83,7 +83,7 @@ sealed class Portal : Form
         }
         else
         {
-            k = tamanho * Escala(ponto);
+            k = kTela; // mesma escala da página de escolha, como os outros efeitos
             duracao = DuracaoElastica / velocidade;
             comprimento = (int)Math.Ceiling(2 * 2.8 * Largura * k * 1.2);
             fundo = (int)Math.Ceiling(Profundidade * k * 1.2 + 14 * k);
