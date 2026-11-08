@@ -54,6 +54,14 @@ static class Nativo
     public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool GetKeyboardLayoutName(System.Text.StringBuilder pwszKLID);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetKeyboardLayout(uint idThread);
+    [DllImport("user32.dll")]
+    public static extern IntPtr ActivateKeyboardLayout(IntPtr hkl, uint flags);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     // Cursor invisível: troca os cursores do sistema por um vazio e depois restaura.
     [DllImport("user32.dll")]

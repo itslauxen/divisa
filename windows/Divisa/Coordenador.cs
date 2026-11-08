@@ -155,17 +155,35 @@ sealed class Coordenador
         c.Enviar(new() { ["t"] = "ola", ["v"] = 1, ["id"] = Config.Id, ["nome"] = Environment.MachineName, ["so"] = "windows", ["teclado"] = Teclado() });
     }
 
-    /// KLID do layout de teclado ativo (ex.: "00010416" = Português Brasil ABNT2), para o outro lado usar o equivalente.
+    /// KLID do layout de teclado em uso (ex.: "00010416" = Português Brasil ABNT2), para o outro lado usar o equivalente.
+    /// Vale o layout da janela em primeiro plano, não o padrão do sistema. O HKL não traz o KLID direto (as variantes,
+    /// como ABNT2 e US-International, ficam escondidas na palavra alta), então ativamos o mesmo HKL por um instante
+    /// na nossa thread, lemos o nome e devolvemos o que estava.
     private static string Teclado()
     {
         var nome = new System.Text.StringBuilder(9);
+        try
+        {
+            var janela = GetForegroundWindow();
+            var hkl = janela != IntPtr.Zero ? GetKeyboardLayout(GetWindowThreadProcessId(janela, out _)) : IntPtr.Zero;
+            if (hkl != IntPtr.Zero)
+            {
+                var nosso = GetKeyboardLayout(0);
+                if (hkl == nosso) return GetKeyboardLayoutName(nome) ? nome.ToString() : "";
+                ActivateKeyboardLayout(hkl, 0);
+                var ok = GetKeyboardLayoutName(nome);
+                ActivateKeyboardLayout(nosso, 0);
+                if (ok) return nome.ToString();
+            }
+        }
+        catch (Exception) { }
         return GetKeyboardLayoutName(nome) ? nome.ToString() : "";
     }
 
     private void Enviar(Dictionary<string, object> msg)
     {
         // Teclas e movimento não vão para o log: gravar disco dentro do gancho atrasa a entrada.
-        if (msg["t"] is not ("mov" or "ping" or "area" or "tecla")) Log.Escrever($"-> {msg["t"]} (estado {Estado})");
+        if (msg["t"] is not ("mov" or "ping" or "area" or "tecla")) Log.Escrever($"-> {msg["t"]}{(msg.TryGetValue("teclado", out var tk) ? $" teclado {tk}" : "")} (estado {Estado})");
         conexao?.Enviar(msg);
     }
 
@@ -278,7 +296,9 @@ sealed class Coordenador
             try { if (Clipboard.ContainsText()) Enviar(new() { ["t"] = "area", ["texto"] = Clipboard.GetText() }); } catch (ExternalException) { }
             ultimaAreaEnviada = seq;
         }
-        Enviar(ComFracao("entrar", Fracao(p)));
+        var entrar = ComFracao("entrar", Fracao(p));
+        entrar["teclado"] = Teclado(); // o layout pode ter mudado desde o "ola"
+        Enviar(entrar);
         Estado = Estado.Mandando;
         if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: false);
         pino = p;
