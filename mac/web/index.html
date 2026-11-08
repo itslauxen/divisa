@@ -33,9 +33,12 @@ const aviso = document.getElementById('aviso');
 const texto = document.getElementById('texto');
 let ws = null, comecou = false, desenhando = false, proximo = null;
 
+// Tamanho físico da tela do tablet, deitado. Não usa o tamanho da página: a barra do navegador aparece e some,
+// e cada mudança faria o Mac recriar a tela virtual (as janelas pulam e tudo engasga).
 function tamanhoEmPixels() {
   const dpr = window.devicePixelRatio || 1;
-  return { w: Math.round(window.innerWidth * dpr), h: Math.round(window.innerHeight * dpr) };
+  const a = Math.round(screen.width * dpr), b = Math.round(screen.height * dpr);
+  return { w: Math.max(a, b), h: Math.min(a, b) };
 }
 
 function enviar(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }

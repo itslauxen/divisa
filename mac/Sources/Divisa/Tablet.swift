@@ -172,7 +172,8 @@ final class Tablet: NSObject, ObservableObject {
             let nova = CGVirtualDisplay(descriptor: d)
             let ajustes = CGVirtualDisplaySettings()
             ajustes.hiDPI = 1
-            ajustes.modes = [CGVirtualDisplayMode(width: UInt32(w / 2), height: UInt32(h / 2), refreshRate: 60)]
+            // 30 Hz: a captura manda no máximo 30 quadros por segundo, e desenhar a 60 só gastaria o WindowServer do Mac.
+            ajustes.modes = [CGVirtualDisplayMode(width: UInt32(w / 2), height: UInt32(h / 2), refreshRate: 30)]
             guard nova.apply(ajustes) else {
                 diario("tablet: não deu para criar a tela virtual")
                 return
@@ -180,8 +181,11 @@ final class Tablet: NSObject, ObservableObject {
             tela = nova
             tamanhoDaTela = (w, h)
             diario("tablet: tela virtual %d×%d px (id %d)", w, h, nova.displayID)
+            comecarCaptura()
+        } else if captura == nil {
+            // Mesma tela de antes (ex.: o tablet reconectou): só volta a capturar.
+            comecarCaptura()
         }
-        comecarCaptura()
     }
 
     private func fecharTela() {
@@ -192,19 +196,31 @@ final class Tablet: NSObject, ObservableObject {
         tamanhoDaTela = (0, 0)
     }
 
+    /// Muda a cada captura nova: uma captura que termina de iniciar depois de outra ter sido pedida se desliga sozinha.
+    private var geracao = 0
+
     private func comecarCaptura() {
         guard let tela, cliente != nil else { return }
         captura?.parar()
+        geracao += 1
+        let minha = geracao
         let id = tela.displayID, (w, h) = tamanhoDaTela
         let nova = Captura(displayID: id, largura: w, altura: h) { [weak self] jpeg in
-            MainActor.assumeIsolated { self?.enviarQuadro(jpeg) }
+            MainActor.assumeIsolated {
+                guard let self, self.geracao == minha else { return }
+                self.enviarQuadro(jpeg)
+            }
         }
         captura = nova
         Task {
             // A tela recém-criada demora um instante para aparecer na lista do ScreenCaptureKit.
             for _ in 0..<10 {
+                guard geracao == minha else { return }
                 switch await nova.iniciar() {
-                case .ok: semPermissaoDeTela = false; return
+                case .ok:
+                    semPermissaoDeTela = false
+                    if geracao != minha { nova.parar() } // outra captura foi pedida enquanto esta iniciava
+                    return
                 case .semPermissao: semPermissaoDeTela = true; return
                 case .telaNaoEncontrada: try? await Task.sleep(for: .milliseconds(300))
                 }
@@ -350,6 +366,7 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
         config.queueDepth = 3
+        config.scalesToFit = true // imagem menor que a tela: reduz a tela inteira, sem cortar
         let s = SCStream(filter: filtro, configuration: config, delegate: nil)
         do {
             try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: fila)
