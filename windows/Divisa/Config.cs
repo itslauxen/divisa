@@ -17,6 +17,14 @@ sealed class Config
     public bool AltComoCmd { get; set; } = true;
     /// Onda de "portal" na borda quando o cursor passa de um computador para o outro.
     public bool Portal { get; set; } = true;
+    /// Qual efeito de portal: "hexagonos" (campo de força) ou "elastica".
+    public string PortalEfeito { get; set; } = "hexagonos";
+    /// Cor do efeito, em #RRGGBB.
+    public string PortalCor { get; set; } = "#009425";
+    /// 1,0 = duração original do efeito; maior = mais rápido.
+    public double PortalVelocidade { get; set; } = 1.4;
+    /// 1,0 = tamanho original; menor = menor.
+    public double PortalTamanho { get; set; } = 0.65;
 
     private static string Arquivo => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Divisa", "config.json");
 

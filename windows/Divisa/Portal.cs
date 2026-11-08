@@ -2,56 +2,78 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace Divisa;
 
-/// Ondulação de "portal" na borda por onde o cursor passa: a borda se estica como uma
-/// membrana elástica (uma curva em forma de sino, comprida ao longo da borda) e volta,
-/// uma vez só. Saindo, a ondulação se recolhe para o ponto; chegando, ela se espalha.
-/// Janela transparente, por cima de tudo, sem foco e sem pegar clique. Roda na thread da
-/// interface (a mesma dos ganchos), então cada quadro é pequeno e rápido.
+/// Efeito de "portal" na borda por onde o cursor passa. Dois efeitos (Config.PortalEfeito):
+/// - "hexagonos" (campo de força): uma malha de hexágonos acende numa única frente que se abre a partir
+///   do ponto quando o cursor chega, ou se fecha nele quando o cursor sai;
+/// - "elastica": a borda se estica como uma membrana (curva de sino comprida) e volta, uma vez só.
+/// Cor, velocidade e tamanho vêm da Config. Janela transparente, por cima de tudo, sem foco e sem pegar
+/// clique. Roda na thread da interface (a mesma dos ganchos), então cada quadro é pequeno e rápido.
 sealed class Portal : Form
 {
-    // Em pontos (multiplicados pela escala do monitor).
-    private const float Largura = 70;     // desvio da curva de sino ao longo da borda
-    private const float Profundidade = 22; // quanto a borda "afunda" para dentro, no máximo
-    private const double Duracao = 520;    // ms
-    private static readonly Color Cor = Color.FromArgb(56, 166, 207);
-    private static readonly Color Brilho = Color.FromArgb(98, 197, 238);
-
     private static Portal? atual;
 
-    private readonly bool entrando;
+    private readonly bool entrando, hexagonos;
     private readonly Lado borda;
-    private readonly float escala, sigma0, profundidade;
+    private readonly Color cor, clara;
+    private readonly float k;              // pixels por unidade do efeito
+    private readonly double duracao;       // ms
     private readonly int comprimento, fundo; // tamanho da janela ao longo da borda e para dentro, em pixels
     private readonly Rectangle janela;
     private readonly DateTime inicio = DateTime.Now;
     private readonly Timer quadro = new() { Interval = 15 };
 
-    /// Mostra a ondulação no ponto da borda. Entrando = o cursor chegou aqui; senão, saiu daqui.
-    public static void Mostrar(Point ponto, Lado borda, bool entrando)
+    // Campo de força (unidades do efeito; mesmos valores da página de escolha)
+    private const float LadoHex = 11, RaioHex = 120, LarguraFrente = 14;
+    private const double DuracaoHex = 680;
+    // Elástica
+    private const float Largura = 70, Profundidade = 22;
+    private const double DuracaoElastica = 520;
+
+    /// Mostra o efeito no ponto da borda. Entrando = o cursor chegou aqui; senão, saiu daqui.
+    public static void Mostrar(Point ponto, Lado borda, bool entrando, Config config)
     {
         try
         {
             atual?.Close();
-            atual = new Portal(ponto, borda, entrando);
+            atual = new Portal(ponto, borda, entrando, config);
             atual.Show();
         }
         catch (Exception e) { Log.Escrever($"portal falhou: {e.Message}"); }
     }
 
-    private Portal(Point ponto, Lado borda, bool entrando)
+    private Portal(Point ponto, Lado borda, bool entrando, Config config)
     {
         this.entrando = entrando;
         this.borda = borda;
-        escala = Escala(ponto);
-        sigma0 = Largura * escala;
-        profundidade = Profundidade * escala;
-        comprimento = (int)Math.Ceiling(2 * 2.8 * sigma0 * 1.2);
-        fundo = (int)Math.Ceiling(profundidade * 1.2 + 14 * escala); // folga para a sobrecarga elástica e o brilho
+        hexagonos = config.PortalEfeito != "elastica";
+        cor = LerCor(config.PortalCor, Color.FromArgb(0, 148, 37));
+        clara = Clarear(cor, 0.35f);
+        var tamanho = (float)Math.Clamp(config.PortalTamanho, 0.1, 3);
+        var velocidade = Math.Clamp(config.PortalVelocidade, 0.2, 5);
+
+        if (hexagonos)
+        {
+            // Na página de escolha, o efeito é medido contra uma tela de 760 unidades de largura;
+            // aqui usamos a largura real do monitor, para ocupar a mesma parte da tela que lá.
+            k = tamanho * Screen.FromPoint(ponto).Bounds.Width / 760f;
+            duracao = DuracaoHex / velocidade;
+            var alcance = (int)Math.Ceiling((RaioHex + LadoHex * 2) * k);
+            comprimento = 2 * alcance;
+            fundo = alcance;
+        }
+        else
+        {
+            k = tamanho * Escala(ponto);
+            duracao = DuracaoElastica / velocidade;
+            comprimento = (int)Math.Ceiling(2 * 2.8 * Largura * k * 1.2);
+            fundo = (int)Math.Ceiling(Profundidade * k * 1.2 + 14 * k);
+        }
 
         // A janela encosta na borda da área total das telas, centrada no ponto.
         var a = SystemInformation.VirtualScreen;
@@ -97,7 +119,7 @@ sealed class Portal : Form
         base.OnFormClosed(e);
     }
 
-    /// Converte (s ao longo da borda, a partir do centro; d para dentro, a partir da borda) em pixels da janela.
+    /// Converte (s ao longo da borda, a partir do ponto; d para dentro, a partir da borda) em pixels da janela.
     private PointF Ponto(float s, float d) => borda switch
     {
         Lado.Direita => new PointF(fundo - d, comprimento / 2f + s),
@@ -106,6 +128,53 @@ sealed class Portal : Form
         _ => new PointF(comprimento / 2f + s, fundo - d),
     };
 
+    private void Desenhar()
+    {
+        var p = (DateTime.Now - inicio).TotalMilliseconds / duracao;
+        if (p >= 1) { Close(); return; }
+
+        using var bmp = new Bitmap(janela.Width, janela.Height, PixelFormat.Format32bppPArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            if (hexagonos) DesenharHexagonos(g, p); else DesenharElastica(g, p);
+        }
+        Aplicar(bmp);
+    }
+
+    // MARK: Campo de força
+
+    private void DesenharHexagonos(Graphics g, double p)
+    {
+        float a = LadoHex * k, rMax = RaioHex * k, larg = LarguraFrente * k;
+        var frente = (float)(entrando ? rMax * EaseOutCubic(p) : rMax * (1 - EaseOutCubic(p)));
+        var geral = Math.Clamp(Math.Min(1, p * 6) * (1.15 - p), 0, 1);
+        var cantos = new PointF[6];
+        using var traco = new Pen(clara, 1.2f * k) { LineJoin = LineJoin.Round };
+        using var miolo = new SolidBrush(cor);
+        for (int r = 0; r <= 12; r++)
+            for (int q = -16; q <= 16; q++)
+            {
+                float s = a * MathF.Sqrt(3) * (q + r / 2f), d = a * 1.5f * r;
+                var dist = MathF.Sqrt(s * s + d * d);
+                if (dist > rMax + a) continue;
+                var i = Math.Exp(-((dist - frente) * (dist - frente)) / (2 * larg * larg)) * geral;
+                if (i < 0.02) continue;
+                for (int v = 0; v < 6; v++)
+                {
+                    var ang = Math.PI / 6 + v * Math.PI / 3;
+                    cantos[v] = Ponto(s + (float)Math.Cos(ang) * a * 0.92f, d + (float)Math.Sin(ang) * a * 0.92f);
+                }
+                miolo.Color = Color.FromArgb((int)(255 * 0.18 * i), cor);
+                g.FillPolygon(miolo, cantos);
+                traco.Color = Color.FromArgb((int)(255 * 0.9 * i), clara);
+                g.DrawPolygon(traco, cantos);
+            }
+    }
+
+    // MARK: Elástica
+
     /// Quanto a borda está esticada, de 0 a ~1,08: sobe rápido com uma pequena sobra elástica e volta suave.
     private static double Envelope(double p)
     {
@@ -113,77 +182,72 @@ sealed class Portal : Form
         const double subida = 0.32;
         if (p < subida)
         {
-            var x = p / subida - 1; // ease-out-back: passa um pouco de 1 e assenta
+            var x = p / subida - 1;
             const double c = 1.4;
             return 1 + (c + 1) * x * x * x + c * x * x;
         }
-        var q = (p - subida) / (1 - subida); // ease-in-out de volta a 0
+        var q = (p - subida) / (1 - subida);
         return 1 - (q < 0.5 ? 4 * q * q * q : 1 - Math.Pow(-2 * q + 2, 3) / 2);
     }
 
-    private void Desenhar()
+    private void DesenharElastica(Graphics g, double p)
     {
-        var p = (DateTime.Now - inicio).TotalMilliseconds / Duracao;
-        if (p >= 1) { Close(); return; }
-
         var env = (float)Envelope(p);
-        // Chegando, a ondulação se espalha ao longo da borda; saindo, ela se recolhe para o ponto.
-        var sigma = sigma0 * (float)(entrando ? 0.65 + 0.55 * p : 1.2 - 0.55 * p);
-        var a = env * profundidade;
+        var sigma = Largura * k * (float)(entrando ? 0.65 + 0.55 * p : 1.2 - 0.55 * p);
+        var a = env * Profundidade * k;
         var alcance = Math.Min(2.8f * sigma, comprimento / 2f - 1);
+        if (a <= 0.3f) return;
 
-        using var bmp = new Bitmap(janela.Width, janela.Height, PixelFormat.Format32bppPArgb);
-        using (var g = Graphics.FromImage(bmp))
+        int n = 96;
+        var curva = new PointF[n + 1];
+        for (int i = 0; i <= n; i++)
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
-            if (a > 0.3f)
-            {
-                // A curva: d(s) = a · e^(−s²/2σ²)
-                int n = 96;
-                var curva = new PointF[n + 1];
-                for (int i = 0; i <= n; i++)
-                {
-                    var s = -alcance + 2 * alcance * i / n;
-                    curva[i] = Ponto(s, a * (float)Math.Exp(-s * s / (2 * sigma * sigma)));
-                }
-
-                // Preenchimento: da borda (mais forte) até a curva (transparente).
-                using (var area = new GraphicsPath())
-                {
-                    area.AddLine(Ponto(-alcance, 0), curva[0]);
-                    area.AddLines(curva);
-                    area.AddLine(curva[n], Ponto(alcance, 0));
-                    area.CloseFigure();
-                    var forca = Math.Clamp(env, 0, 1);
-                    using var fundoCor = new LinearGradientBrush(Ponto(0, -0.5f), Ponto(0, a + 0.5f),
-                        Color.FromArgb((int)(150 * forca), Cor), Color.FromArgb(0, Cor));
-                    g.FillPath(fundoCor, area);
-                }
-
-                // Traço da curva, que some nas pontas ao longo da borda.
-                var forte = (int)(255 * Math.Clamp(env, 0, 1));
-                Pen Caneta(Color cor, int alfa, float largura)
-                {
-                    var pincel = new LinearGradientBrush(Ponto(-alcance - 1, 0), Ponto(alcance + 1, 0), Color.Transparent, Color.Transparent)
-                    {
-                        InterpolationColors = new ColorBlend
-                        {
-                            Colors = new[] { Color.FromArgb(0, cor), Color.FromArgb(alfa, cor), Color.FromArgb(0, cor) },
-                            Positions = new[] { 0f, 0.5f, 1f },
-                        },
-                    };
-                    var caneta = new Pen(pincel, largura) { LineJoin = LineJoin.Round };
-                    pincel.Dispose();
-                    return caneta;
-                }
-                using (var brilho = Caneta(Brilho, forte / 3, 9 * escala)) g.DrawCurve(brilho, curva);
-                using (var traco = Caneta(Cor, forte, 3 * escala)) g.DrawCurve(traco, curva);
-                using (var miolo = Caneta(Color.White, forte * 2 / 3, 1 * escala)) g.DrawCurve(miolo, curva);
-            }
+            var s = -alcance + 2 * alcance * i / n;
+            curva[i] = Ponto(s, a * (float)Math.Exp(-s * s / (2 * sigma * sigma)));
         }
-        Aplicar(bmp);
+        var forca = Math.Clamp(env, 0, 1);
+        using (var area = new GraphicsPath())
+        {
+            area.AddLine(Ponto(-alcance, 0), curva[0]);
+            area.AddLines(curva);
+            area.AddLine(curva[n], Ponto(alcance, 0));
+            area.CloseFigure();
+            using var fundoCor = new LinearGradientBrush(Ponto(0, -0.5f), Ponto(0, a + 0.5f),
+                Color.FromArgb((int)(150 * forca), cor), Color.FromArgb(0, cor));
+            g.FillPath(fundoCor, area);
+        }
+        var forte = (int)(255 * forca);
+        Pen Caneta(Color c, int alfa, float largura)
+        {
+            using var pincel = new LinearGradientBrush(Ponto(-alcance - 1, 0), Ponto(alcance + 1, 0), Color.Transparent, Color.Transparent)
+            {
+                InterpolationColors = new ColorBlend
+                {
+                    Colors = new[] { Color.FromArgb(0, c), Color.FromArgb(alfa, c), Color.FromArgb(0, c) },
+                    Positions = new[] { 0f, 0.5f, 1f },
+                },
+            };
+            return new Pen(pincel, largura) { LineJoin = LineJoin.Round };
+        }
+        using (var brilho = Caneta(clara, forte / 3, 9 * k)) g.DrawCurve(brilho, curva);
+        using (var traco = Caneta(cor, forte, 3 * k)) g.DrawCurve(traco, curva);
+        using (var miolo = Caneta(Color.White, forte * 2 / 3, 1 * k)) g.DrawCurve(miolo, curva);
     }
+
+    // MARK: Utilidades
+
+    private static double EaseOutCubic(double x) => 1 - Math.Pow(1 - x, 3);
+
+    private static Color LerCor(string? texto, Color padrao)
+    {
+        if (texto is { Length: 7 } && texto[0] == '#' &&
+            int.TryParse(texto.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+            return Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+        return padrao;
+    }
+
+    private static Color Clarear(Color c, float f) =>
+        Color.FromArgb((int)(c.R + (255 - c.R) * f), (int)(c.G + (255 - c.G) * f), (int)(c.B + (255 - c.B) * f));
 
     /// Põe o bitmap (com transparência por pixel) na janela em camadas.
     private void Aplicar(Bitmap bmp)

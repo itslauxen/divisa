@@ -10,8 +10,29 @@ namespace Divisa;
 static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
+        // "Divisa.exe --testar-portal [entrando|saindo]": mostra o efeito do portal no meio da borda configurada e fecha.
+        // Serve para ver cor, tamanho e velocidade sem precisar do outro computador.
+        if (args.Length > 0 && args[0] == "--testar-portal")
+        {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            var config = Config.Carregar();
+            var a = SystemInformation.VirtualScreen;
+            var ponto = config.Lado switch
+            {
+                Lado.Direita => new Point(a.Right - 1, a.Top + a.Height / 2),
+                Lado.Esquerda => new Point(a.Left, a.Top + a.Height / 2),
+                Lado.Acima => new Point(a.Left + a.Width / 2, a.Top),
+                _ => new Point(a.Left + a.Width / 2, a.Bottom - 1),
+            };
+            var fim = new System.Windows.Forms.Timer { Interval = 2500 };
+            fim.Tick += (_, _) => Application.Exit();
+            fim.Start();
+            Portal.Mostrar(ponto, config.Lado, entrando: args.Length < 2 || args[1] != "saindo", config);
+            Application.Run();
+            return;
+        }
         using var unico = new Mutex(true, "Divisa-dev.lauxen", out var primeiro);
         if (!primeiro) return;
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // coordenadas em pixels reais, iguais às dos ganchos

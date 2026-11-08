@@ -300,7 +300,7 @@ sealed class Coordenador
         entrar["teclado"] = Teclado(); // o layout pode ter mudado desde o "ola"
         Enviar(entrar);
         Estado = Estado.Mandando;
-        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: false);
+        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: false, Config);
         pino = p;
         // O cursor fica parado no meio da tela principal (escondido); cada movimento vira delta a partir dali.
         var tela = Screen.PrimaryScreen!.Bounds;
@@ -319,7 +319,7 @@ sealed class Coordenador
         ultimo = p;
         voltouEm = DateTime.Now;
         Cursor.Mostrar();
-        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: true);
+        if (Config.Portal) Portal.Mostrar(p, Config.Lado, entrando: true, Config);
         AoMudar?.Invoke();
     }
 
@@ -330,7 +330,7 @@ sealed class Coordenador
         Estado = Estado.Obedecendo;
         cursor = PontoNaBorda(fracao, 1);
         Cursor.Mostrar();
-        if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: true);
+        if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: true, Config);
         MoverPara(cursor);
         AoMudar?.Invoke();
     }
@@ -343,7 +343,7 @@ sealed class Coordenador
             SoltarTudo();
             Estado = Estado.Local;
             Enviar(ComFracao("sair", f));
-            if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: false);
+            if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: false, Config);
             AoMudar?.Invoke();
             return;
         }
