@@ -22,7 +22,8 @@ enum Portal {
     private static func mostrar(_ ponto: CGPoint, _ borda: Lado, entrando: Bool) {
         guard ligado else { return }
         atual?.orderOut(nil)
-        let onda = Onda(borda: borda, entrando: entrando)
+        let tela = Onda.telaDoPonto(ponto)
+        let onda = Onda(borda: borda, entrando: entrando, larguraDaTela: tela.width)
 
         // A janela encosta na borda da área total das telas, centrada no ponto (como no Windows).
         let a = Onda.areaDasTelas
@@ -67,18 +68,44 @@ private final class Onda: NSView {
         return ids.prefix(Int(n)).reduce(CGRect.null) { $0.union(CGDisplayBounds($1)) }
     }
 
+    // Campo de força (hexágonos), em unidades do efeito × k. Mesmos valores do Windows.
+    private static let ladoHex: CGFloat = 11
+    private static let raioHex: CGFloat = 120
+    private static let larguraFrente: CGFloat = 14
+
     let borda: Lado
     let entrando: Bool
     let comprimento: CGFloat
     let fundo: CGFloat
+    /// "campo" (hexágonos, o padrão) ou "elastica" (a onda de antes).
+    private let hexagonos: Bool
+    private let k: CGFloat
+    private let duracao: Double
+    private let corHex: NSColor
     private var inicio = Date()
     private var relogio: Timer?
 
-    init(borda: Lado, entrando: Bool) {
+    init(borda: Lado, entrando: Bool, larguraDaTela: CGFloat) {
         self.borda = borda
         self.entrando = entrando
-        comprimento = (2 * 2.8 * Self.largura * 1.2).rounded(.up)
-        fundo = (Self.profundidade * 1.2 + 14).rounded(.up) // folga para a sobra elástica e o brilho
+        let ud = UserDefaults.standard
+        hexagonos = (ud.string(forKey: "portalEfeito") ?? "campo") == "campo"
+        let tamanho = ud.object(forKey: "portalTamanho") as? Double ?? 0.65
+        let velocidade = ud.object(forKey: "portalVelocidade") as? Double ?? 1.4
+        corHex = NSColor(hex: ud.string(forKey: "portalCor") ?? "#009425") ?? NSColor(red: 0, green: 0x94 / 255, blue: 0x25 / 255, alpha: 1)
+        if hexagonos {
+            // Ocupa a mesma parte da tela que na página de efeitos (feita para 760 pt de largura).
+            k = CGFloat(tamanho) * larguraDaTela / 760
+            let alcance = (Self.raioHex + 2 * Self.ladoHex) * k
+            comprimento = (2 * alcance).rounded(.up)
+            fundo = alcance.rounded(.up)
+            duracao = 0.68 / velocidade
+        } else {
+            k = 1
+            comprimento = (2 * 2.8 * Self.largura * 1.2).rounded(.up)
+            fundo = (Self.profundidade * 1.2 + 14).rounded(.up) // folga para a sobra elástica e o brilho
+            duracao = Self.duracao
+        }
         super.init(frame: .zero)
     }
 
@@ -90,7 +117,7 @@ private final class Onda: NSView {
         inicio = Date()
         relogio = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] t in
             guard let self else { return t.invalidate() }
-            if Date().timeIntervalSince(self.inicio) >= Self.duracao {
+            if Date().timeIntervalSince(self.inicio) >= self.duracao {
                 t.invalidate()
                 aoTerminar()
             } else {
@@ -123,7 +150,8 @@ private final class Onda: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let g = NSGraphicsContext.current?.cgContext else { return }
-        let p = Date().timeIntervalSince(inicio) / Self.duracao
+        let p = Date().timeIntervalSince(inicio) / duracao
+        if hexagonos { return desenharHexagonos(g, p) }
         let env = CGFloat(Self.envelope(p))
         // Chegando, a ondulação se espalha ao longo da borda; saindo, ela se recolhe para o ponto.
         let sigma = Self.largura * CGFloat(entrando ? 0.65 + 0.55 * p : 1.2 - 0.55 * p)
@@ -173,5 +201,60 @@ private final class Onda: NSView {
         traco(Self.brilho, forca / 3, 9)
         traco(Self.cor, forca, 3)
         traco(.white, forca * 2 / 3, 1)
+    }
+
+    // MARK: Campo de força
+
+    static func telaDoPonto(_ p: CGPoint) -> CGRect {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        var n: UInt32 = 0
+        CGGetActiveDisplayList(16, &ids, &n)
+        let telas = ids.prefix(Int(n)).map { CGDisplayBounds($0) }
+        return telas.first { $0.insetBy(dx: -2, dy: -2).contains(p) } ?? CGDisplayBounds(CGMainDisplayID())
+    }
+
+    private static func easeOutCubic(_ p: Double) -> Double { 1 - pow(1 - min(max(p, 0), 1), 3) }
+
+    private func desenharHexagonos(_ g: CGContext, _ p: Double) {
+        let a = Self.ladoHex * k, rMax = Self.raioHex * k, larg = Self.larguraFrente * k
+        let frente = rMax * CGFloat(entrando ? Self.easeOutCubic(p) : 1 - Self.easeOutCubic(p))
+        let geral = min(max(min(1, p * 6) * (1.15 - p), 0), 1)
+        // Contorno na cor clareada 35%.
+        let c = corHex.usingColorSpace(.sRGB) ?? corHex
+        let clara = NSColor(red: c.redComponent + (1 - c.redComponent) * 0.35, green: c.greenComponent + (1 - c.greenComponent) * 0.35,
+                            blue: c.blueComponent + (1 - c.blueComponent) * 0.35, alpha: 1)
+        g.setLineWidth(1.2 * k)
+        g.setLineJoin(.round)
+        for r in 0...12 {
+            for q in -16...16 {
+                let s = a * sqrt(3) * (CGFloat(q) + CGFloat(r) / 2), d = a * 1.5 * CGFloat(r)
+                let dist = sqrt(s * s + d * d)
+                guard dist <= rMax + a else { continue }
+                let i = exp(-Double((dist - frente) * (dist - frente)) / Double(2 * larg * larg)) * geral
+                guard i >= 0.02 else { continue }
+                let hex = CGMutablePath()
+                for v in 0..<6 {
+                    let ang = Double.pi / 6 + Double(v) * Double.pi / 3
+                    let q = ponto(s + CGFloat(cos(ang)) * a * 0.92, d + CGFloat(sin(ang)) * a * 0.92)
+                    v == 0 ? hex.move(to: q) : hex.addLine(to: q)
+                }
+                hex.closeSubpath()
+                g.addPath(hex)
+                g.setFillColor(c.withAlphaComponent(0.18 * i).cgColor)
+                g.fillPath()
+                g.addPath(hex)
+                g.setStrokeColor(clara.withAlphaComponent(0.9 * i).cgColor)
+                g.strokePath()
+            }
+        }
+    }
+}
+
+extension NSColor {
+    /// "#009425" → cor.
+    convenience init?(hex: String) {
+        let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
+        self.init(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
 }
