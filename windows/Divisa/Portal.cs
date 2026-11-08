@@ -18,7 +18,8 @@ sealed class Portal : Form
 {
     private static Portal? atual;
 
-    private readonly bool entrando, hexagonos;
+    private readonly bool entrando;
+    private readonly string efeito;
     private readonly Lado borda;
     private readonly Color cor, clara;
     private readonly float k;              // pixels por unidade do efeito
@@ -31,6 +32,10 @@ sealed class Portal : Form
     // Campo de força (unidades do efeito; mesmos valores da página de escolha)
     private const float LadoHex = 11, RaioHex = 120, LarguraFrente = 14;
     private const double DuracaoHex = 680;
+    // Pixels
+    private const float LadoPixel = 7;
+    private const int Pixels = 40, Colunas = 7, Linhas = 7;
+    private const double DuracaoPixels = 720;
     // Elástica
     private const float Largura = 70, Profundidade = 22;
     private const double DuracaoElastica = 520;
@@ -51,19 +56,28 @@ sealed class Portal : Form
     {
         this.entrando = entrando;
         this.borda = borda;
-        hexagonos = config.PortalEfeito != "elastica";
+        efeito = config.PortalEfeito is "hexagonos" or "elastica" ? config.PortalEfeito : "pixels";
         cor = LerCor(config.PortalCor, Color.FromArgb(0, 148, 37));
         clara = Clarear(cor, 0.35f);
-        var tamanho = (float)Math.Clamp(config.PortalTamanho, 0.1, 3);
+        var tamanho = (float)Math.Clamp(config.PortalTamanho, 0.05, 3);
         var velocidade = Math.Clamp(config.PortalVelocidade, 0.2, 5);
+        // Na página de escolha, os efeitos novos são medidos contra uma tela de 760 unidades de largura;
+        // aqui usamos a largura real do monitor, para ocupar a mesma parte da tela que lá.
+        var kTela = tamanho * Screen.FromPoint(ponto).Bounds.Width / 760f;
 
-        if (hexagonos)
+        if (efeito == "hexagonos")
         {
-            // Na página de escolha, o efeito é medido contra uma tela de 760 unidades de largura;
-            // aqui usamos a largura real do monitor, para ocupar a mesma parte da tela que lá.
-            k = tamanho * Screen.FromPoint(ponto).Bounds.Width / 760f;
+            k = kTela;
             duracao = DuracaoHex / velocidade;
             var alcance = (int)Math.Ceiling((RaioHex + LadoHex * 2) * k);
+            comprimento = 2 * alcance;
+            fundo = alcance;
+        }
+        else if (efeito == "pixels")
+        {
+            k = Math.Max(kTela, 2f / LadoPixel); // cada quadradinho com pelo menos 2 px
+            duracao = DuracaoPixels / velocidade;
+            var alcance = (int)Math.Ceiling((Math.Max(Colunas, Linhas) + 2) * 1.3f * LadoPixel * k);
             comprimento = 2 * alcance;
             fundo = alcance;
         }
@@ -138,7 +152,12 @@ sealed class Portal : Form
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
-            if (hexagonos) DesenharHexagonos(g, p); else DesenharElastica(g, p);
+            switch (efeito)
+            {
+                case "hexagonos": DesenharHexagonos(g, p); break;
+                case "pixels": DesenharPixels(g, p); break;
+                default: DesenharElastica(g, p); break;
+            }
         }
         Aplicar(bmp);
     }
@@ -171,6 +190,34 @@ sealed class Portal : Form
                 traco.Color = Color.FromArgb((int)(255 * 0.9 * i), clara);
                 g.DrawPolygon(traco, cantos);
             }
+    }
+
+    // MARK: Pixels
+
+    /// O cursor se desfaz em quadradinhos: chegando, eles saem da borda e se espalham para dentro em passos de
+    /// um quadradinho; saindo, são puxados para a borda. Mesma sequência pseudoaleatória da página de escolha.
+    private void DesenharPixels(Graphics g, double p)
+    {
+        var x = 5 * 9301 + 49297; // semente(5) da página
+        double Proximo() { x = (x * 9301 + 49297) % 233280; return x / 233280.0; }
+        float tam = LadoPixel * k;
+        using var pincel = new SolidBrush(cor);
+        for (int i = 0; i < Pixels; i++)
+        {
+            int col = (int)Math.Floor(Proximo() * Colunas);
+            int lin = (int)Math.Round((Proximo() * 2 - 1) * Linhas);
+            double atraso = Proximo() * 0.4, tom = Proximo() * 0.5;
+            float alvo = (col + 1) * tam * 1.3f, s = lin * tam * 1.3f;
+            var tau = Math.Clamp((p - atraso) / 0.55, 0, 1);
+            if (entrando ? tau <= 0 : tau >= 1) continue;
+            var d = entrando ? alvo * EaseOutCubic(tau) : alvo * (1 - tau * tau * tau);
+            d = Math.Round(d / tam) * tam;
+            var alfa = entrando ? (p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1) : (tau < 0.1 ? tau * 10 : 1);
+            var c = Clarear(cor, (float)tom);
+            pincel.Color = Color.FromArgb((int)(255 * 0.9 * Math.Clamp(alfa, 0, 1)), c);
+            var centro = Ponto(s, (float)d);
+            g.FillRectangle(pincel, centro.X - tam * 0.42f, centro.Y - tam * 0.42f, tam * 0.84f, tam * 0.84f);
+        }
     }
 
     // MARK: Elástica
