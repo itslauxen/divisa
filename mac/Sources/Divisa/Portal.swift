@@ -90,10 +90,10 @@ private final class Onda: NSView {
         self.borda = borda
         self.entrando = entrando
         let ud = UserDefaults.standard
-        efeito = ud.string(forKey: "portalEfeito") ?? "pixels"
-        let tamanho = ud.object(forKey: "portalTamanho") as? Double ?? 0.2
-        let velocidade = ud.object(forKey: "portalVelocidade") as? Double ?? 1.2
-        corHex = NSColor(hex: ud.string(forKey: "portalCor") ?? "#009425") ?? NSColor(red: 0, green: 0x94 / 255, blue: 0x25 / 255, alpha: 1)
+        efeito = ud.string(forKey: "portalEfeito") ?? "elastica"
+        let tamanho = ud.object(forKey: "portalTamanho") as? Double ?? 0.55
+        let velocidade = ud.object(forKey: "portalVelocidade") as? Double ?? 1.8
+        corHex = NSColor(hex: ud.string(forKey: "portalCor") ?? "#38A6CF") ?? Self.cor
         if efeito == "pixels" {
             // Mínimo para cada quadradinho ter pelo menos 2 pt.
             k = max(CGFloat(tamanho) * larguraDaTela / 760, 2.0 / 7)
@@ -109,10 +109,11 @@ private final class Onda: NSView {
             fundo = alcance.rounded(.up)
             duracao = 0.68 / velocidade
         } else {
-            k = 1
-            comprimento = (2 * 2.8 * Self.largura * 1.2).rounded(.up)
-            fundo = (Self.profundidade * 1.2 + 14).rounded(.up) // folga para a sobra elástica e o brilho
-            duracao = Self.duracao
+            // Elástica, na mesma escala da página de efeitos e dos outros efeitos.
+            k = CGFloat(tamanho) * larguraDaTela / 760
+            comprimento = (2 * 2.8 * Self.largura * k * 1.2).rounded(.up)
+            fundo = (Self.profundidade * k * 1.2 + 14 * k).rounded(.up) // folga para a sobra elástica e o brilho
+            duracao = Self.duracao / velocidade
         }
         super.init(frame: .zero)
     }
@@ -163,8 +164,8 @@ private final class Onda: NSView {
         if hexagonos { return desenharHexagonos(g, p) }
         let env = CGFloat(Self.envelope(p))
         // Chegando, a ondulação se espalha ao longo da borda; saindo, ela se recolhe para o ponto.
-        let sigma = Self.largura * CGFloat(entrando ? 0.65 + 0.55 * p : 1.2 - 0.55 * p)
-        let a = env * Self.profundidade
+        let sigma = Self.largura * k * CGFloat(entrando ? 0.65 + 0.55 * p : 1.2 - 0.55 * p)
+        let a = env * Self.profundidade * k
         let alcance = min(2.8 * sigma, comprimento / 2 - 1)
         guard a > 0.3 else { return }
 
@@ -188,8 +189,8 @@ private final class Onda: NSView {
         g.saveGState()
         g.addPath(area)
         g.clip()
-        let fundoCor = CGGradient(colorsSpace: espaco, colors: [Self.cor.withAlphaComponent(150 / 255 * forca).cgColor,
-                                                                  Self.cor.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1])!
+        let fundoCor = CGGradient(colorsSpace: espaco, colors: [corHex.withAlphaComponent(150 / 255 * forca).cgColor,
+                                                                  corHex.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1])!
         g.drawLinearGradient(fundoCor, start: ponto(0, -0.5), end: ponto(0, a + 0.5), options: [])
         g.restoreGState()
 
@@ -207,9 +208,13 @@ private final class Onda: NSView {
             g.drawLinearGradient(gradiente, start: ponto(-alcance - 1, 0), end: ponto(alcance + 1, 0), options: [])
             g.restoreGState()
         }
-        traco(Self.brilho, forca / 3, 9)
-        traco(Self.cor, forca, 3)
-        traco(.white, forca * 2 / 3, 1)
+        // Brilho na cor clareada 35%, como no Windows.
+        let c = corHex.usingColorSpace(.sRGB) ?? corHex
+        let clara = NSColor(red: c.redComponent + (1 - c.redComponent) * 0.35, green: c.greenComponent + (1 - c.greenComponent) * 0.35,
+                            blue: c.blueComponent + (1 - c.blueComponent) * 0.35, alpha: 1)
+        traco(clara, forca / 3, 9 * k)
+        traco(c, forca, 3 * k)
+        traco(.white, forca * 2 / 3, 1 * k)
     }
 
     // MARK: Pixels
