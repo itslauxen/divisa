@@ -251,12 +251,18 @@ final class Coordenador: ObservableObject {
 
     // MARK: Mandando
 
-    private func comecarAMandar(de p: CGPoint) {
+    /// Manda o texto copiado aqui, se mudou desde o último envio. Vai junto toda vez que o cursor sai deste Mac:
+    /// ao passar para o outro (entrar) e ao devolver o cursor que o outro mandava (sair/liberar).
+    private func enviarAreaSeMudou() {
         let pb = NSPasteboard.general
         if pb.changeCount != ultimaAreaEnviada, let texto = pb.string(forType: .string) {
             enviar(["t": "area", "texto": texto])
         }
         ultimaAreaEnviada = pb.changeCount
+    }
+
+    private func comecarAMandar(de p: CGPoint) {
+        enviarAreaSeMudou()
         enviar(lado.vertical ? ["t": "entrar", "y": fracao(de: p)] : ["t": "entrar", "x": fracao(de: p)])
         estado = .mandando
         pino = p
@@ -322,6 +328,7 @@ final class Coordenador: ObservableObject {
             soltarTudo()
             Portal.saida(em: cursor, borda: lado)
             estado = .local
+            enviarAreaSeMudou()
             enviar(lado.vertical ? ["t": "sair", "y": f] : ["t": "sair", "x": f])
             return
         }
@@ -391,7 +398,10 @@ final class Coordenador: ObservableObject {
     private func voltarParaLocal(avisar: Bool) {
         switch estado {
         case .mandando: soltarCursor(em: nil)
-        case .obedecendo: soltarTudo(); estado = .local
+        case .obedecendo:
+            soltarTudo()
+            estado = .local
+            if avisar { enviarAreaSeMudou() }
         case .local: break
         }
         if avisar { enviar(["t": "liberar"]) }
