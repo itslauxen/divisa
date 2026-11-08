@@ -77,8 +77,9 @@ private final class Onda: NSView {
     let entrando: Bool
     let comprimento: CGFloat
     let fundo: CGFloat
-    /// "campo" (hexágonos, o padrão) ou "elastica" (a onda de antes).
-    private let hexagonos: Bool
+    /// "pixels" (o padrão), "campo" (hexágonos) ou "elastica" (a onda de antes).
+    private let efeito: String
+    private var hexagonos: Bool { efeito == "campo" }
     private let k: CGFloat
     private let duracao: Double
     private let corHex: NSColor
@@ -89,11 +90,18 @@ private final class Onda: NSView {
         self.borda = borda
         self.entrando = entrando
         let ud = UserDefaults.standard
-        hexagonos = (ud.string(forKey: "portalEfeito") ?? "campo") == "campo"
-        let tamanho = ud.object(forKey: "portalTamanho") as? Double ?? 0.65
-        let velocidade = ud.object(forKey: "portalVelocidade") as? Double ?? 1.4
+        efeito = ud.string(forKey: "portalEfeito") ?? "pixels"
+        let tamanho = ud.object(forKey: "portalTamanho") as? Double ?? 0.2
+        let velocidade = ud.object(forKey: "portalVelocidade") as? Double ?? 1.2
         corHex = NSColor(hex: ud.string(forKey: "portalCor") ?? "#009425") ?? NSColor(red: 0, green: 0x94 / 255, blue: 0x25 / 255, alpha: 1)
-        if hexagonos {
+        if efeito == "pixels" {
+            // Mínimo para cada quadradinho ter pelo menos 2 pt.
+            k = max(CGFloat(tamanho) * larguraDaTela / 760, 2.0 / 7)
+            let alcance = (7 + 2) * 1.3 * 7 * k
+            comprimento = (2 * alcance).rounded(.up)
+            fundo = alcance.rounded(.up)
+            duracao = 0.72 / velocidade
+        } else if efeito == "campo" {
             // Ocupa a mesma parte da tela que na página de efeitos (feita para 760 pt de largura).
             k = CGFloat(tamanho) * larguraDaTela / 760
             let alcance = (Self.raioHex + 2 * Self.ladoHex) * k
@@ -151,6 +159,7 @@ private final class Onda: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let g = NSGraphicsContext.current?.cgContext else { return }
         let p = Date().timeIntervalSince(inicio) / duracao
+        if efeito == "pixels" { return desenharPixels(g, p) }
         if hexagonos { return desenharHexagonos(g, p) }
         let env = CGFloat(Self.envelope(p))
         // Chegando, a ondulação se espalha ao longo da borda; saindo, ela se recolhe para o ponto.
@@ -201,6 +210,45 @@ private final class Onda: NSView {
         traco(Self.brilho, forca / 3, 9)
         traco(Self.cor, forca, 3)
         traco(.white, forca * 2 / 3, 1)
+    }
+
+    // MARK: Pixels
+
+    private func desenharPixels(_ g: CGContext, _ p: Double) {
+        // Mesmo gerador pseudoaleatório da página de efeitos, para o desenho ser o mesmo.
+        var x = 5 * 9301 + 49297
+        func proximo() -> Double {
+            x = (x * 9301 + 49297) % 233280
+            return Double(x) / 233280
+        }
+        let tam = 7 * k
+        let c = corHex.usingColorSpace(.sRGB) ?? corHex
+        for _ in 0..<40 {
+            let col = floor(proximo() * 7)
+            let lin = ((proximo() * 2 - 1) * 7).rounded()
+            let atraso = proximo() * 0.4
+            let tom = proximo() * 0.5
+            let alvo = CGFloat(col + 1) * tam * 1.3
+            let s = CGFloat(lin) * tam * 1.3
+            let tau = min(max((p - atraso) / 0.55, 0), 1)
+            var d: CGFloat
+            let alfa: Double
+            if entrando {
+                guard tau > 0 else { continue }
+                d = alvo * CGFloat(Self.easeOutCubic(tau))
+                alfa = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3
+            } else {
+                guard tau < 1 else { continue }
+                d = alvo * CGFloat(1 - tau * tau * tau)
+                alfa = tau < 0.1 ? tau * 10 : 1
+            }
+            d = (d / tam).rounded() * tam // anda em "passos de pixel"
+            let cor = NSColor(red: c.redComponent + (1 - c.redComponent) * tom, green: c.greenComponent + (1 - c.greenComponent) * tom,
+                              blue: c.blueComponent + (1 - c.blueComponent) * tom, alpha: 0.9 * max(alfa, 0))
+            let centro = ponto(s, d), lado = 0.84 * tam
+            g.setFillColor(cor.cgColor)
+            g.fill(CGRect(x: centro.x - lado / 2, y: centro.y - lado / 2, width: lado, height: lado))
+        }
     }
 
     // MARK: Campo de força
