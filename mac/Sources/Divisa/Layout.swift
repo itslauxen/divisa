@@ -33,6 +33,9 @@ enum Layout {
             ativadoPorNos = alvo
         }
         anterior = agora
+        // Guardado em disco: se a Divisa fechar no meio, devolve o layout na próxima abertura.
+        UserDefaults.standard.set(id(agora), forKey: "layoutAnterior")
+        UserDefaults.standard.set(ativadoPorNos.map(id), forKey: "layoutAtivadoPorNos")
         TISSelectInputSource(alvo)
         diario("teclado: %@ enquanto o outro computador manda", alvoID)
     }
@@ -44,6 +47,19 @@ enum Layout {
         diario("teclado: de volta para %@", id(anterior))
         self.anterior = nil
         ativadoPorNos = nil
+        UserDefaults.standard.removeObject(forKey: "layoutAnterior")
+        UserDefaults.standard.removeObject(forKey: "layoutAtivadoPorNos")
+    }
+
+    /// Ao abrir: se a última execução fechou com o layout trocado, devolve o de antes.
+    static func recuperar() {
+        let ud = UserDefaults.standard
+        guard let antes = ud.string(forKey: "layoutAnterior"), let fonteAntes = fonte(antes) else { return }
+        TISSelectInputSource(fonteAntes)
+        if let extra = ud.string(forKey: "layoutAtivadoPorNos"), let f = fonte(extra) { TISDisableInputSource(f) }
+        ud.removeObject(forKey: "layoutAnterior")
+        ud.removeObject(forKey: "layoutAtivadoPorNos")
+        diario("teclado: devolvido %@ (a última execução fechou no meio)", antes)
     }
 
     private static func fonte(_ id: String) -> TISInputSource? {

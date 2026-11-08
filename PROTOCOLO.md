@@ -42,7 +42,7 @@ Logo ao conectar, os dois lados mandam:
 {"t":"ola","v":1,"id":"7d1e…","nome":"PC-GABRIEL","so":"windows","teclado":"00010416"}
 ```
 
-`teclado` (opcional) é o layout de teclado ativo: no Windows o KLID (ex.: `00010416` = Português Brasil ABNT2), no Mac o id da fonte de entrada (ex.: `com.apple.keylayout.Brazilian-Pro`). Como as teclas viajam pela posição física (HID), quem obedece pode trocar para o layout equivalente enquanto obedece, para os símbolos saírem como estão desenhados no teclado de quem manda.
+`teclado` (opcional) é o layout de teclado ativo: no Windows o KLID (ex.: `00010416` = Português Brasil ABNT2), no Mac o id da fonte de entrada (ex.: `com.apple.keylayout.Brazilian-Pro`). Como as teclas viajam pela posição física (HID), quem obedece pode trocar para o layout equivalente enquanto obedece, para os símbolos saírem como estão desenhados no teclado de quem manda. O `entrar` também pode levar `teclado`, com o layout da janela em uso naquele momento (no Windows, o da janela em primeiro plano: `GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow()))`), que vale mais que o do `ola`.
 
 Depois, `{"t":"ping"}` a cada 2 s. Sem receber nada por 6 s, a conexão é dada como morta: feche, e se estava Mandando, volte para Local (mostre o cursor de novo); se estava Obedecendo, volte para Local.
 

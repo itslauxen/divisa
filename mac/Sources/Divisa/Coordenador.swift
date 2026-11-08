@@ -84,6 +84,10 @@ final class Coordenador: ObservableObject {
     }
 
     func iniciar() {
+        Layout.recuperar()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { Layout.restaurar() }
+        }
         diario("iniciando %@ (id %@), acessibilidade %@", nome, id, acessibilidade ? "liberada" : "negada")
         servidor.aoConectar = { [weak self] nova in
             guard let self else { return }
@@ -173,6 +177,8 @@ final class Coordenador: ObservableObject {
             diario("conectado a %@ (%@)", parceiro ?? "?", msg["so"] as? String ?? "?")
         case "entrar":
             guard ativo else { return enviar(["t": "liberar"]) }
+            // O layout pode ter mudado desde o "ola": quem manda informa o da janela em uso.
+            if let teclado = msg["teclado"] as? String { layoutDoParceiro = teclado }
             if estado == .mandando { soltarCursor(em: nil) }
             entrar(fracao: (msg["y"] ?? msg["x"]).flatMap(numero) ?? 0.5)
         case "mov":
