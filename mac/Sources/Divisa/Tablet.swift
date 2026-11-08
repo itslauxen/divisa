@@ -16,6 +16,12 @@ final class Tablet: NSObject, ObservableObject {
     @Published private(set) var conectado = false
     @Published private(set) var semPermissaoDeTela = false
     @Published private(set) var endereco = ""
+    @Published var qualidade = Qualidade.atual {
+        didSet {
+            UserDefaults.standard.set(qualidade.rawValue, forKey: "tabletQualidade")
+            if captura != nil { comecarCaptura() } // vale na hora, sem reconectar o tablet
+        }
+    }
 
     private var pagina: NWListener?
     private var video: NWListener?
@@ -280,6 +286,34 @@ final class Tablet: NSObject, ObservableObject {
     }
 }
 
+/// Quanto da resolução do tablet vai na imagem. Menos = mais fluido, mais suave o texto.
+enum Qualidade: String, CaseIterable, Identifiable {
+    case fluida, equilibrada, nitida
+    var id: String { rawValue }
+    var nome: String {
+        switch self {
+        case .fluida: "Fluida"
+        case .equilibrada: "Equilibrada"
+        case .nitida: "Nítida"
+        }
+    }
+    var escala: Double {
+        switch self {
+        case .fluida: 0.5
+        case .equilibrada: 0.7
+        case .nitida: 1
+        }
+    }
+    var jpeg: Double {
+        switch self {
+        case .fluida: 0.6
+        case .equilibrada: 0.65
+        case .nitida: 0.7
+        }
+    }
+    static var atual: Qualidade { Qualidade(rawValue: UserDefaults.standard.string(forKey: "tabletQualidade") ?? "") ?? .equilibrada }
+}
+
 /// Captura uma tela com o ScreenCaptureKit e entrega cada quadro novo em JPEG.
 final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
     enum Resultado { case ok, semPermissao, telaNaoEncontrada }
@@ -290,6 +324,7 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
     private var stream: SCStream?
     private let fila = DispatchQueue(label: "divisa.captura")
     private let ci = CIContext(options: [.useSoftwareRenderer: false])
+    private let qualidadeJPEG = Qualidade.atual.jpeg
 
     init(displayID: CGDirectDisplayID, largura: Int, altura: Int, aoQuadro: @escaping (Data) -> Void) {
         self.displayID = displayID
@@ -307,8 +342,10 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
         guard let display = conteudo.displays.first(where: { $0.displayID == displayID }) else { return .telaNaoEncontrada }
         let filtro = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
-        config.width = largura
-        config.height = altura
+        // Imagem menor que a tela, para o tablet dar conta: ele amplia de volta ao desenhar.
+        let q = Qualidade.atual
+        config.width = max(Int(Double(largura) * q.escala) & ~1, 2)
+        config.height = max(Int(Double(altura) * q.escala) & ~1, 2)
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
@@ -339,7 +376,7 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
               let pixels = CMSampleBufferGetImageBuffer(amostra) else { return }
         let imagem = CIImage(cvPixelBuffer: pixels)
         guard let jpeg = ci.jpegRepresentation(of: imagem, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                               options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.7]) else { return }
+                                               options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: qualidadeJPEG]) else { return }
         DispatchQueue.main.async { self.aoQuadro(jpeg) }
     }
 }

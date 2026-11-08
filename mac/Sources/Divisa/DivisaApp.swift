@@ -107,6 +107,11 @@ private struct Painel: View {
                 Toggle("Tela no tablet", isOn: $tablet.ligado).toggleStyle(.switch).labelsHidden()
             }
             if tablet.ligado {
+                Picker("Qualidade", selection: $tablet.qualidade) {
+                    ForEach(Qualidade.allCases) { Text($0.nome).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .help("Fluida manda metade da resolução (mais leve para o tablet e o Wi-Fi); Nítida manda a resolução cheia.")
                 if tablet.semPermissaoDeTela {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Para mandar a imagem, libere a Divisa em Gravação de Tela e reabra o app.")
