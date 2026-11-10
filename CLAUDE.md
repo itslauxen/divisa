@@ -27,7 +27,7 @@ Visão do usuário no `README.md`; contrato entre os apps no `PROTOCOLO.md`.
 - Sem testes automatizados.
 
 ## Deploy e onde roda
-- Repo `github.com/itslauxen/divisa`. Publicar = rodar `scripts/empacotar.sh` e subir `Divisa-mac.zip` e `Divisa-windows.exe` num GitHub Release (última: `v0.1.0`). Os instaladores apontam para `releases/latest/download/...`, então os nomes dos arquivos não podem mudar. Comando exato de upload (gh release) não está em script (verificar).
+- Repo `github.com/itslauxen/divisa`. Publicar = rodar `scripts/empacotar.sh` e subir `Divisa-mac.zip` e `Divisa-windows.exe` num GitHub Release (última: `v0.2.0`). Os instaladores apontam para `releases/latest/download/...`, então os nomes dos arquivos não podem mudar. Comando exato de upload (gh release) não está em script (verificar).
 - Roda localmente nos dois computadores, mesma rede: TCP 24800 (conexão), UDP 24801 (descoberta por broadcast), HTTP 24802 (página do tablet), WebSocket 24803 (imagem do tablet).
 
 ## Convenções
