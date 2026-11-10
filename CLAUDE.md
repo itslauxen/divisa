@@ -44,6 +44,8 @@ Visão do usuário no `README.md`; contrato entre os apps no `PROTOCOLO.md`.
 - Layout de teclado: quem obedece troca para o layout do outro lado (campo `teclado` no `ola`/`entrar`) e devolve ao fechar — inclusive na abertura seguinte se fechou no meio.
 - Windows restaura os cursores do sistema ao abrir e no instalador (o app troca/esconde o cursor enquanto manda).
 - Tablet: tamanho físico fixo (não recriar a tela virtual), uma captura por vez, tela virtual a 30 Hz, qualidade padrão 70% da resolução.
+- Tablet, latência: o Mac só manda o próximo quadro depois do `ok` do tablet (sem isso a fila no Wi-Fi somava segundos); cada quadro é só o pedaço que mudou (cabeçalho de 8 bytes: W, H, x, y), então a página não pode descartar quadros; o cursor não vai na imagem: o Mac manda `cursor`/`forma` em texto pelo mesmo WebSocket e a página desenha a seta.
+- Lado: cada computador tem o seu ("Windows em cima" no Mac exige "Mac embaixo" no Windows); lados trocados fazem o cursor voltar na hora e parece que o teclado não passa.
 - Atalho de emergência: `Ctrl+Option+Shift+Esc` (Mac) / `Ctrl+Alt+Shift+Esc` (Windows).
 - Limitações aceitas: anticheat (Vanguard) ignora entrada simulada; tela de login/UAC/`Ctrl+Alt+Del` no Windows; redes com isolamento de clientes.
 - Logs: Mac em `~/Library/Logs/Divisa.log`; Windows em `%LOCALAPPDATA%\Divisa\Divisa.log`.
