@@ -39,7 +39,7 @@ Visão do usuário no `README.md`; contrato entre os apps no `PROTOCOLO.md`.
 - **Permissões do macOS**: Acessibilidade (mouse/teclado) e Gravação de Tela (tablet). Assinar com identidade fixa no `build.sh` evita que o macOS peça de novo a cada build.
 - App do Mac **não notarizado**: o instalador remove a quarentena (`xattr -dr com.apple.quarantine`).
 - Firewall do Windows bloqueando entrada: o lado de `id` maior também conecta após 6 s sem conexão.
-- **Não gravar teclas no log do Windows**: escrever em disco dentro do gancho atrasava a entrada.
+- **Não gravar teclas no log do Windows**: escrever em disco dentro do gancho atrasava a entrada. Vale também para as mensagens recebidas em rajada (`mov`, `rolar`, `tecla`): o log roda na mesma thread do gancho, e logar cada `rolar` do trackpad do Mac travava o mouse no Windows.
 - Mouse suave: no Mac a leitura do mouse roda numa thread própria; no Windows o movimento é agregado a cada 4 ms.
 - Layout de teclado: quem obedece troca para o layout do outro lado (campo `teclado` no `ola`/`entrar`) e devolve ao fechar — inclusive na abertura seguinte se fechou no meio.
 - Windows restaura os cursores do sistema ao abrir e no instalador (o app troca/esconde o cursor enquanto manda).
