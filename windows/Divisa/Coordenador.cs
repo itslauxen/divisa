@@ -198,7 +198,9 @@ sealed class Coordenador
     {
         ultimoRecebido = DateTime.Now;
         var tipoMsg = (string?)msg["t"];
-        if (tipoMsg is not ("mov" or "ping")) Log.Escrever($"<- {msg.ToJsonString()} (estado {Estado})");
+        // Rolagem e teclas não vão para o log: o trackpad do Mac manda dezenas por segundo, e gravar disco aqui
+        // (mesma thread do gancho do mouse) travava o mouse. Tecla também não deve ficar escrita em disco.
+        if (tipoMsg is not ("mov" or "ping" or "rolar" or "tecla")) Log.Escrever($"<- {msg.ToJsonString()} (estado {Estado})");
         switch (tipoMsg)
         {
             case "ola":
