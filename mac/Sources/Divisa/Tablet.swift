@@ -67,6 +67,7 @@ final class Tablet: NSObject, ObservableObject {
         pagina?.cancel(); pagina = nil
         video?.cancel(); video = nil
         cliente?.cancel(); cliente = nil
+        relogio?.invalidate(); relogio = nil
         conectado = false
         fecharTela()
     }
@@ -90,6 +91,10 @@ final class Tablet: NSObject, ObservableObject {
         // Um tablet por vez: o novo substitui o anterior.
         cliente?.cancel()
         cliente = c
+        esperandoDesde = nil
+        ultimaPosicao = ""
+        ultimaForma = nil
+        acompanharCursor()
         c.stateUpdateHandler = { [weak self, weak c] estado in
             MainActor.assumeIsolated { self?.mudou(c, estado) }
         }
@@ -102,11 +107,13 @@ final class Tablet: NSObject, ObservableObject {
             switch estado {
             case .ready:
                 self.conectado = true
-                diario("tablet: conectou")
+                diario("tablet: conectou (%@)", c.endpoint.debugDescription)
             case .failed, .cancelled:
                 guard self.cliente === c else { return }
                 self.cliente = nil
                 self.conectado = false
+                self.relogio?.invalidate()
+                self.relogio = nil
                 diario("tablet: desconectou")
                 self.captura?.parar()
                 self.captura = nil
@@ -140,6 +147,11 @@ final class Tablet: NSObject, ObservableObject {
             toque(fase: msg["fase"] as? String ?? "", x: n("x"), y: n("y"))
         case "direito":
             clique(.right, x: n("x"), y: n("y"))
+        case "ok":
+            // O tablet desenhou o quadro: libera o próximo.
+            if let desde = esperandoDesde { atrasos.append(Date().timeIntervalSince(desde)) }
+            esperandoDesde = nil
+            captura?.liberar()
         case "rolar":
             let ev = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                              wheel1: Int32(n("dy").rounded()), wheel2: Int32(n("dx").rounded()), wheel3: 0)
@@ -229,17 +241,86 @@ final class Tablet: NSObject, ObservableObject {
         }
     }
 
-    private var quadrosNoCaminho = 0
+    /// Quando foi o quadro que o tablet ainda não confirmou ("ok" depois de desenhar).
+    private var esperandoDesde: Date?
+    // Estatística para o log (a cada 5 s).
+    private var atrasos: [TimeInterval] = []
+    private var bytesEnviados = 0, quadrosEnviados = 0
+    private var ultimaEstatistica = Date()
 
-    private func enviarQuadro(_ jpeg: Data) {
-        // Se a rede não está dando conta, pula quadros em vez de acumular atraso.
-        guard let cliente, quadrosNoCaminho < 2 else { return }
-        quadrosNoCaminho += 1
+    /// A captura só entrega um quadro depois do "ok" do anterior: sem fila na rede, sem atraso acumulado.
+    private func enviarQuadro(_ quadro: Data) {
+        guard let cliente else { return }
+        esperandoDesde = Date()
+        bytesEnviados += quadro.count
+        quadrosEnviados += 1
         let meta = NWProtocolWebSocket.Metadata(opcode: .binary)
         let ctx = NWConnection.ContentContext(identifier: "quadro", metadata: [meta])
-        cliente.send(content: jpeg, contentContext: ctx, isComplete: true, completion: .contentProcessed { [weak self] _ in
-            MainActor.assumeIsolated { self?.quadrosNoCaminho -= 1 }
-        })
+        cliente.send(content: quadro, contentContext: ctx, isComplete: true, completion: .idempotent)
+        registrarEstatistica()
+    }
+
+    private func enviarTexto(_ msg: [String: Any]) {
+        guard let cliente, let dados = try? JSONSerialization.data(withJSONObject: msg) else { return }
+        let meta = NWProtocolWebSocket.Metadata(opcode: .text)
+        let ctx = NWConnection.ContentContext(identifier: "texto", metadata: [meta])
+        cliente.send(content: dados, contentContext: ctx, isComplete: true, completion: .idempotent)
+    }
+
+    // MARK: Cursor
+
+    // O cursor não vai na imagem: o Mac manda só a posição (60 vezes por segundo) e o tablet desenha a seta por cima.
+    // Assim ele anda com o atraso da rede, e não com o da captura + JPEG + quadro inteiro.
+    private var relogio: Timer?
+    private var ultimaPosicao = ""
+    private var ultimaForma: Data?
+    private var tique = 0
+
+    private func acompanharCursor() {
+        relogio?.invalidate()
+        relogio = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tiqueDoCursor() }
+        }
+    }
+
+    private func tiqueDoCursor() {
+        guard cliente != nil, let tela else { return }
+        tique += 1
+        // Página antiga (sem "ok") ou confirmação perdida: não trava a imagem para sempre.
+        if let desde = esperandoDesde, Date().timeIntervalSince(desde) > 2 {
+            esperandoDesde = nil
+            captura?.liberar(tudo: true)
+        }
+        let b = CGDisplayBounds(tela.displayID)
+        let p = CGEvent(source: nil)?.location ?? .zero
+        // Escondido = o cursor está no Windows (a Divisa está mandando lá).
+        let dentro = b.contains(p) && !Cursor.escondido
+        if dentro, tique % 6 == 0 || ultimaForma == nil { mandarForma(b) }
+        let posicao = dentro ? String(format: "%.4f %.4f", (p.x - b.minX) / b.width, (p.y - b.minY) / b.height) : ""
+        guard posicao != ultimaPosicao else { return }
+        ultimaPosicao = posicao
+        enviarTexto(dentro ? ["t": "cursor", "x": (p.x - b.minX) / b.width, "y": (p.y - b.minY) / b.height] : ["t": "cursor"])
+    }
+
+    /// Imagem do cursor atual (seta, mãozinha, I...), só quando muda. Tamanho em fração da tela, ponto quente em fração do cursor.
+    private func mandarForma(_ b: CGRect) {
+        guard let cursor = NSCursor.currentSystem, let tiff = cursor.image.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]), png != ultimaForma else { return }
+        ultimaForma = png
+        let t = cursor.image.size
+        enviarTexto(["t": "forma", "png": png.base64EncodedString(), "w": t.width / b.width, "h": t.height / b.height,
+                     "hx": cursor.hotSpot.x / max(t.width, 1), "hy": cursor.hotSpot.y / max(t.height, 1)])
+    }
+
+    private func registrarEstatistica() {
+        let t = Date().timeIntervalSince(ultimaEstatistica)
+        guard t >= 5 else { return }
+        let medio = atrasos.isEmpty ? 0 : atrasos.reduce(0, +) / Double(atrasos.count)
+        diario("tablet: %.0f q/s, %d KB/quadro, %.1f Mb/s, atraso até desenhar %.0f ms (máx %.0f)",
+               Double(quadrosEnviados) / t, bytesEnviados / max(quadrosEnviados, 1) / 1024,
+               Double(bytesEnviados) * 8 / t / 1_000_000, medio * 1000, (atrasos.max() ?? 0) * 1000)
+        atrasos = []; bytesEnviados = 0; quadrosEnviados = 0
+        ultimaEstatistica = Date()
     }
 
     // MARK: Toque → mouse
@@ -330,7 +411,8 @@ enum Qualidade: String, CaseIterable, Identifiable {
     static var atual: Qualidade { Qualidade(rawValue: UserDefaults.standard.string(forKey: "tabletQualidade") ?? "") ?? .equilibrada }
 }
 
-/// Captura uma tela com o ScreenCaptureKit e entrega cada quadro novo em JPEG.
+/// Captura uma tela com o ScreenCaptureKit e entrega, em JPEG, só o pedaço que mudou desde o último quadro entregue.
+/// Cada quadro vai com um cabeçalho de 8 bytes (UInt16 big-endian): largura e altura da imagem inteira, x e y do pedaço.
 final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
     enum Resultado { case ok, semPermissao, telaNaoEncontrada }
 
@@ -364,7 +446,7 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
         config.height = max(Int(Double(altura) * q.escala) & ~1, 2)
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         config.pixelFormat = kCVPixelFormatType_32BGRA
-        config.showsCursor = true
+        config.showsCursor = false // o tablet desenha o cursor por cima (ver Tablet.tiqueDoCursor)
         config.queueDepth = 3
         config.scalesToFit = true // imagem menor que a tela: reduz a tela inteira, sem cortar
         let s = SCStream(filter: filtro, configuration: config, delegate: nil)
@@ -385,15 +467,53 @@ final class Captura: NSObject, SCStreamOutput, @unchecked Sendable {
         stream = nil
     }
 
+    // Só na fila da captura: o quadro mais novo, a soma do que mudou desde o último entregue e se o tablet já pediu o próximo.
+    private var ultimo: CVPixelBuffer?
+    private var sujo = CGRect.infinite // o primeiro quadro vai inteiro
+    private var livre = true
+
+    /// O tablet desenhou o quadro anterior. `tudo` reenvia a imagem inteira (confirmação perdida).
+    func liberar(tudo: Bool = false) {
+        fila.async { [self] in
+            livre = true
+            if tudo { sujo = .infinite }
+            entregar()
+        }
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer amostra: CMSampleBuffer, of tipo: SCStreamOutputType) {
         // Só quadros com imagem nova; os "parados" não mudam nada na tela do tablet.
         guard tipo == .screen,
               let anexos = CMSampleBufferGetSampleAttachmentsArray(amostra, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let bruto = anexos.first?[.status] as? Int, SCFrameStatus(rawValue: bruto) == .complete,
               let pixels = CMSampleBufferGetImageBuffer(amostra) else { return }
-        let imagem = CIImage(cvPixelBuffer: pixels)
-        guard let jpeg = ci.jpegRepresentation(of: imagem, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+        let rects = (anexos.first?[.dirtyRects] as? [NSDictionary])?.compactMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+        // Os retângulos vêm em pixels da imagem capturada (já reduzida pela qualidade).
+        sujo = rects.map { $0.reduce(sujo) { $0.union($1) } } ?? .infinite
+        ultimo = pixels
+        entregar()
+    }
+
+    private func entregar() {
+        guard livre, let pixels = ultimo, !sujo.isNull else { return }
+        let W = CVPixelBufferGetWidth(pixels), H = CVPixelBufferGetHeight(pixels)
+        let r = sujo.intersection(CGRect(x: 0, y: 0, width: W, height: H))
+        guard !r.isNull, !r.isEmpty else { sujo = .null; return }
+        // Em blocos de 16 px, os do JPEG: as bordas do pedaço encaixam sem manchar.
+        let x = Int(r.minX) / 16 * 16, y = Int(r.minY) / 16 * 16
+        let w = min((Int(r.maxX.rounded(.up)) + 15) / 16 * 16, W) - x, h = min((Int(r.maxY.rounded(.up)) + 15) / 16 * 16, H) - y
+        // CoreImage conta y de baixo para cima.
+        let pedaco = CIImage(cvPixelBuffer: pixels)
+            .cropped(to: CGRect(x: x, y: H - y - h, width: w, height: h))
+            .transformed(by: CGAffineTransform(translationX: CGFloat(-x), y: CGFloat(-(H - y - h))))
+        guard let jpeg = ci.jpegRepresentation(of: pedaco, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
                                                options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: qualidadeJPEG]) else { return }
-        DispatchQueue.main.async { self.aoQuadro(jpeg) }
+        ultimo = nil
+        sujo = .null
+        livre = false
+        var quadro = Data(capacity: jpeg.count + 8)
+        for v in [W, H, x, y] { withUnsafeBytes(of: UInt16(v).bigEndian) { quadro.append(contentsOf: $0) } }
+        quadro.append(jpeg)
+        DispatchQueue.main.async { self.aoQuadro(quadro) }
     }
 }

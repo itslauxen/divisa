@@ -485,7 +485,7 @@ final class Coordenador: ObservableObject {
 enum Cursor {
     private typealias Padrao = @convention(c) () -> Int32
     private typealias Propriedade = @convention(c) (Int32, Int32, CFString, CFTypeRef) -> Int32
-    private static var escondido = false
+    private(set) static var escondido = false
 
     private static let liberarNoFundo: Void = {
         guard let h = dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices", RTLD_NOW),

@@ -10,6 +10,7 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; overscroll-behavior: none;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  #cursor { position: absolute; left: 0; top: 0; pointer-events: none; display: none; will-change: transform; }
   #aviso { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
     color: #f2f2f4; font: 500 17px/1.4 -apple-system, system-ui, Roboto, sans-serif; text-align: center; background: #0c0d10; padding: 24px; }
   #aviso b { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
@@ -20,6 +21,7 @@
 </head>
 <body>
 <canvas id="tela"></canvas>
+<img id="cursor" alt="">
 <div id="aviso">
   <b>Divisa</b>
   <span id="texto">Toque para usar este tablet como tela do Mac.</span>
@@ -31,7 +33,8 @@ const canvas = document.getElementById('tela');
 const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 const aviso = document.getElementById('aviso');
 const texto = document.getElementById('texto');
-let ws = null, comecou = false, desenhando = false, proximo = null;
+const seta = document.getElementById('cursor');
+let ws = null, comecou = false, desenhando = false, fila = [], cursor = null, forma = null;
 
 // Tamanho físico da tela do tablet, deitado. Não usa o tamanho da página: a barra do navegador aparece e some,
 // e cada mudança faria o Mac recriar a tela virtual (as janelas pulam e tudo engasga).
@@ -47,7 +50,7 @@ function conectar() {
   ws = new WebSocket(`ws://${location.hostname}:24803`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => { aviso.classList.add('escondido'); enviar({ t: 'tela', ...tamanhoEmPixels() }); };
-  ws.onmessage = e => { if (typeof e.data !== 'string') mostrar(e.data); };
+  ws.onmessage = e => { if (typeof e.data === 'string') receber(JSON.parse(e.data)); else mostrar(e.data); };
   ws.onclose = () => {
     texto.textContent = 'Reconectando ao Mac…';
     document.getElementById('botao').classList.add('escondido');
@@ -56,22 +59,51 @@ function conectar() {
   };
 }
 
-// Só o quadro mais novo importa: se chegar outro enquanto um decodifica, o do meio é descartado.
+// Cada quadro é só o pedaço que mudou (cabeçalho: largura e altura da imagem inteira, x e y do pedaço), então
+// nenhum pode ser pulado. O Mac só manda o próximo depois do "ok", e a fila quase nunca passa de um.
 function mostrar(buf) {
-  proximo = buf;
-  if (desenhando) return;
+  fila.push(buf);
+  if (!desenhando) desenharProximo();
+}
+
+function desenharProximo() {
+  const buf = fila.shift();
+  if (!buf) return;
   desenhando = true;
-  const atual = proximo; proximo = null;
-  createImageBitmap(new Blob([atual], { type: 'image/jpeg' })).then(img => {
-    if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }
-    ctx.drawImage(img, 0, 0);
+  const v = new DataView(buf);
+  const W = v.getUint16(0), H = v.getUint16(2), x = v.getUint16(4), y = v.getUint16(6);
+  createImageBitmap(new Blob([new Uint8Array(buf, 8)], { type: 'image/jpeg' })).then(img => {
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; posicionarCursor(); }
+    ctx.drawImage(img, x, y);
     img.close();
-  }).catch(() => {}).finally(() => { desenhando = false; if (proximo) mostrar(proximo); });
+  }).catch(() => {}).finally(() => {
+    desenhando = false;
+    enviar({ t: 'ok' });
+    desenharProximo();
+  });
+}
+
+// ---- Cursor ----
+// O Mac manda a posição (fração da tela) e a imagem do cursor; a seta anda aqui, sem esperar o próximo quadro.
+function receber(m) {
+  if (m.t === 'forma') { forma = m; seta.src = 'data:image/png;base64,' + m.png; }
+  else if (m.t === 'cursor') cursor = 'x' in m ? m : null;
+  posicionarCursor();
+}
+
+function posicionarCursor() {
+  if (!cursor || !forma || !canvas.width) { seta.style.display = 'none'; return; }
+  const a = areaDaImagem(), w = forma.w * a.w, h = forma.h * a.h;
+  seta.style.width = w + 'px';
+  seta.style.height = h + 'px';
+  seta.style.transform = `translate(${a.x0 + cursor.x * a.w - forma.hx * w}px, ${a.y0 + cursor.y * a.h - forma.hy * h}px)`;
+  seta.style.display = 'block';
 }
 
 let redimensionar;
 window.addEventListener('resize', () => {
   clearTimeout(redimensionar);
+  posicionarCursor();
   redimensionar = setTimeout(() => enviar({ t: 'tela', ...tamanhoEmPixels() }), 500);
 });
 
@@ -85,12 +117,16 @@ document.getElementById('aviso').addEventListener('click', async () => {
 
 // ---- Toques ----
 // Fração (0…1) do ponto dentro da imagem desenhada (o canvas usa "contain", então pode ter faixas pretas).
-function fracao(t) {
+function areaDaImagem() {
   const r = canvas.getBoundingClientRect();
   const escala = Math.min(r.width / canvas.width, r.height / canvas.height);
   const w = canvas.width * escala, h = canvas.height * escala;
-  const x0 = r.left + (r.width - w) / 2, y0 = r.top + (r.height - h) / 2;
-  return { x: (t.clientX - x0) / w, y: (t.clientY - y0) / h };
+  return { x0: r.left + (r.width - w) / 2, y0: r.top + (r.height - h) / 2, w, h };
+}
+
+function fracao(t) {
+  const a = areaDaImagem();
+  return { x: (t.clientX - a.x0) / a.w, y: (t.clientY - a.y0) / a.h };
 }
 
 const LIMIAR = 8, SEGURAR = 550;
