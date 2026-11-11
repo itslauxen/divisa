@@ -234,9 +234,9 @@ sealed class Coordenador
                 if (Estado == Estado.Mandando) SoltarCursor(null);
                 break;
             case "area":
-                if ((string?)msg["texto"] is string texto)
+                if ((string?)msg["texto"] is { Length: > 0 } texto) // SetText("") lança exceção
                 {
-                    try { Clipboard.SetText(texto); } catch (ExternalException) { }
+                    try { Clipboard.SetText(texto); } catch (Exception) { }
                     ultimaAreaEnviada = GetClipboardSequenceNumber(); // não devolver o mesmo texto
                 }
                 break;
