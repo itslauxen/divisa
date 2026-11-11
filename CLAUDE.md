@@ -20,7 +20,7 @@ Visão do usuário no `README.md`; contrato entre os apps no `PROTOCOLO.md`.
 - `instalar.sh` / `instalar.ps1` — instaladores de um comando (baixam do Release `latest`).
 
 ## Comandos
-- Mac (dev): `cd mac && ./build.sh && open Divisa.app` (assina com "Apple Development" se houver, senão ad hoc).
+- Mac (dev): `cd mac && ./build.sh` (instala em `/Applications` por cima da anterior e reabre; não fica cópia no repo) (assina com "Apple Development" se houver, senão ad hoc).
 - Windows (dev): `cd windows\Divisa && dotnet run -c Release` (compila no Mac graças a `EnableWindowsTargeting`, mas só roda no Windows).
 - Pacotes: `scripts/empacotar.sh` (no Mac, com .NET 8 SDK) → `dist/Divisa-mac.zip` (universal arm64+x86_64, ad hoc) e `dist/Divisa-windows.exe` (self-contained, arquivo único).
 - Testar instaladores sem mexer no app instalado: `DIVISA_URL`/`DIVISA_DESTINO` (`instalar.sh`), `DIVISA_EXE` (`instalar.ps1`).

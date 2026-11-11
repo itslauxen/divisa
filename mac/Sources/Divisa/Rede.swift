@@ -15,6 +15,8 @@ typealias Mensagem = [String: Any]
 final class Descoberta {
     /// (anúncio, IP de quem mandou)
     var aoOuvir: ((Mensagem, String) -> Void)?
+    /// Calada, não anuncia este computador (o outro não acha nem conecta).
+    var calada = false
     private let anuncio: Data
     private var sock: Int32 = -1
     private var timer: DispatchSourceTimer?
@@ -63,6 +65,7 @@ final class Descoberta {
     }
 
     private func anunciar() {
+        if calada { return }
         var destino = sockaddr_in()
         destino.sin_family = sa_family_t(AF_INET)
         destino.sin_port = Portas.udp.bigEndian

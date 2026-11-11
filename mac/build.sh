@@ -14,4 +14,10 @@ cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 IDENTIDADE=$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/{print $2; exit}')
 codesign --force --sign "${IDENTIDADE:--}" "$APP"
 echo "Assinado com: ${IDENTIDADE:-ad hoc}"
-echo "Pronto: $(pwd)/$APP"
+# Instala por cima do /Applications e reabre: no Mac fica sempre só a versão mais recente.
+osascript -e 'quit app "Divisa"' 2>/dev/null || true
+for _ in 1 2 3 4 5; do pgrep -xq Divisa || break; sleep 1; done
+rm -rf "/Applications/$APP"
+mv "$APP" "/Applications/$APP"
+open "/Applications/$APP"
+echo "Pronto: /Applications/$APP"

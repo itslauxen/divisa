@@ -41,6 +41,14 @@ final class Coordenador: ObservableObject {
     @Published private(set) var parceiro: String?
     @Published private(set) var acessibilidade = AXIsProcessTrusted()
     @Published var ativo: Bool { didSet { UserDefaults.standard.set(ativo, forKey: "ativo") } }
+    /// Só a tela no tablet: não procura nem aceita o outro computador.
+    @Published var soTablet: Bool {
+        didSet {
+            UserDefaults.standard.set(soTablet, forKey: "soTablet")
+            descoberta?.calada = soTablet
+            if soTablet { conexao?.fechar() }
+        }
+    }
     @Published var lado: Lado { didSet { UserDefaults.standard.set(lado.rawValue, forKey: "lado") } }
     @Published var usarLayoutDoOutro: Bool { didSet { UserDefaults.standard.set(usarLayoutDoOutro, forKey: "layoutDoOutro") } }
     /// Layout de teclado informado pelo parceiro no "ola" (no Windows, o KLID, ex.: "00010416").
@@ -79,6 +87,7 @@ final class Coordenador: ObservableObject {
             ud.set(id, forKey: "id")
         }
         ativo = ud.object(forKey: "ativo") as? Bool ?? true
+        soTablet = ud.bool(forKey: "soTablet")
         lado = Lado(rawValue: ud.string(forKey: "lado") ?? "") ?? .esquerda
         usarLayoutDoOutro = ud.object(forKey: "layoutDoOutro") as? Bool ?? true
     }
@@ -91,13 +100,14 @@ final class Coordenador: ObservableObject {
         diario("iniciando %@ (id %@), acessibilidade %@", nome, id, acessibilidade ? "liberada" : "negada")
         servidor.aoConectar = { [weak self] nova in
             guard let self else { return }
-            guard self.conexao == nil else { nova.cancel(); return }
+            guard self.conexao == nil, !self.soTablet else { nova.cancel(); return }
             self.usar(Conexao(nova))
         }
         servidor.iniciar()
 
         let d = Descoberta(anuncio: ["t": "anuncio", "v": 1, "id": id, "nome": nome, "so": "mac", "porta": Int(Portas.tcp)])
         d.aoOuvir = { [weak self] msg, ip in self?.ouvir(msg, ip: ip) }
+        d.calada = soTablet
         d.iniciar()
         descoberta = d
 
@@ -109,7 +119,7 @@ final class Coordenador: ObservableObject {
 
     /// Conecta direto num IP, para redes que bloqueiam broadcast.
     func conectar(ip: String) {
-        guard conexao == nil, !ip.isEmpty else { return }
+        guard conexao == nil, !soTablet, !ip.isEmpty else { return }
         usar(Conexao.para(ip: ip, porta: Portas.tcp))
     }
 
@@ -121,7 +131,7 @@ final class Coordenador: ObservableObject {
     // MARK: Rede
 
     private func ouvir(_ msg: Mensagem, ip: String) {
-        guard msg["t"] as? String == "anuncio", let outro = msg["id"] as? String, outro != id else { return }
+        guard !soTablet, msg["t"] as? String == "anuncio", let outro = msg["id"] as? String, outro != id else { return }
         guard conexao == nil else { anunciosSemConexao = nil; return }
         // Quem tem o id menor conecta na hora. O outro espera 6 s: se o firewall de lá bloquear a entrada, conecta ele.
         if id > outro {

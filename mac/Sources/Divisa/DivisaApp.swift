@@ -45,7 +45,7 @@ private struct Painel: View {
                     }
                 }
                 Spacer()
-                Toggle("Ativo", isOn: $c.ativo).toggleStyle(.switch).labelsHidden()
+                if !c.soTablet { Toggle("Ativo", isOn: $c.ativo).toggleStyle(.switch).labelsHidden() }
             }
 
             if !c.acessibilidade {
@@ -59,6 +59,10 @@ private struct Painel: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.12)))
             }
 
+            Toggle("Só o tablet (sem o outro computador)", isOn: $c.soTablet)
+                .help("Não procura nem aceita o Windows; fica só a tela no tablet.")
+
+            if !c.soTablet {
             VStack(alignment: .leading, spacing: 6) {
                 Text("O outro computador fica").font(.caption).foregroundStyle(.secondary)
                 Picker("Lado", selection: $c.lado) {
@@ -76,15 +80,20 @@ private struct Painel: View {
                     }
                 }
             }
+            }
 
             Divider()
             secaoTablet
 
-            Text("Atalho de emergência: ⌃⌥⇧⎋ traz o mouse de volta.").font(.caption2).foregroundStyle(.tertiary)
+            if !c.soTablet {
+                Text("Atalho de emergência: ⌃⌥⇧⎋ traz o mouse de volta.").font(.caption2).foregroundStyle(.tertiary)
+            }
             Divider()
-            Toggle("Usar o layout do teclado do outro computador", isOn: $c.usarLayoutDoOutro)
-                .help("Enquanto o Windows manda, o Mac troca para o layout do teclado dele (ex.: ABNT2) e volta depois.")
-            Toggle("Animação de portal", isOn: Binding(get: { portal }, set: { Portal.ligado = $0; portal = $0 }))
+            if !c.soTablet {
+                Toggle("Usar o layout do teclado do outro computador", isOn: $c.usarLayoutDoOutro)
+                    .help("Enquanto o Windows manda, o Mac troca para o layout do teclado dele (ex.: ABNT2) e volta depois.")
+                Toggle("Animação de portal", isOn: Binding(get: { portal }, set: { Portal.ligado = $0; portal = $0 }))
+            }
             Toggle("Abrir ao iniciar o Mac", isOn: Binding(get: { abrirAoIniciar }, set: { liga in
                 try? liga ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                 abrirAoIniciar = SMAppService.mainApp.status == .enabled
@@ -149,11 +158,13 @@ private struct Painel: View {
     }
 
     private var corDoEstado: Color {
+        if c.soTablet { return tablet.conectado ? .green : .orange }
         guard c.ativo else { return .yellow }
         return c.parceiro == nil ? .orange : .green
     }
 
     private var textoDoEstado: String {
+        if c.soTablet { return tablet.conectado ? "Só o tablet, conectado" : "Só o tablet" }
         guard let p = c.parceiro else { return "Procurando o outro computador…" }
         switch c.estado {
         case .local: return "Conectado a \(p)"
