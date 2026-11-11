@@ -255,7 +255,7 @@ final class Coordenador: ObservableObject {
     /// ao passar para o outro (entrar) e ao devolver o cursor que o outro mandava (sair/liberar).
     private func enviarAreaSeMudou() {
         let pb = NSPasteboard.general
-        if pb.changeCount != ultimaAreaEnviada, let texto = pb.string(forType: .string) {
+        if pb.changeCount != ultimaAreaEnviada, let texto = pb.string(forType: .string), !texto.isEmpty {
             enviar(["t": "area", "texto": texto])
         }
         ultimaAreaEnviada = pb.changeCount
