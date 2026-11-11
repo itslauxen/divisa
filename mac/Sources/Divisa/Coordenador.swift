@@ -286,8 +286,12 @@ final class Coordenador: ObservableObject {
         estado = .local
         let volta = fracao.map { pontoNaBorda($0, dentro: 2) } ?? pino
         // Sem isso o macOS ignora o mouse físico por ~0,25 s depois do warp, e o cursor parece parar na borda.
-        CGEventSource(stateID: .combinedSessionState)?.localEventsSuppressionInterval = 0
+        // Só durante este warp: o valor vale para a sessão toda, e zerado deixava o cursor no tablet travando.
+        let fonte = CGEventSource(stateID: .combinedSessionState)
+        let antes = fonte?.localEventsSuppressionInterval
+        fonte?.localEventsSuppressionInterval = 0
         CGWarpMouseCursorPosition(volta)
+        if let antes { fonte?.localEventsSuppressionInterval = antes }
         CGAssociateMouseAndMouseCursorPosition(1)
         if fracao != nil { Portal.entrada(em: volta, borda: lado) }
         Cursor.mostrar()
