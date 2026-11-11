@@ -284,9 +284,11 @@ final class Coordenador: ObservableObject {
     /// Volta de Mandando para Local. Sem fração, o cursor reaparece onde estava parado.
     private func soltarCursor(em fracao: Double?) {
         estado = .local
-        CGAssociateMouseAndMouseCursorPosition(1)
         let volta = fracao.map { pontoNaBorda($0, dentro: 2) } ?? pino
+        // Sem isso o macOS ignora o mouse físico por ~0,25 s depois do warp, e o cursor parece parar na borda.
+        CGEventSource(stateID: .combinedSessionState)?.localEventsSuppressionInterval = 0
         CGWarpMouseCursorPosition(volta)
+        CGAssociateMouseAndMouseCursorPosition(1)
         if fracao != nil { Portal.entrada(em: volta, borda: lado) }
         Cursor.mostrar()
     }
