@@ -8,8 +8,12 @@ $exe = Join-Path $pasta 'Divisa.exe'
 New-Item -ItemType Directory -Force -Path $pasta | Out-Null
 
 # Fecha a versão aberta, se houver, antes de trocar.
-Get-Process Divisa -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Divisa -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
+# Rodando como administrador, este PowerShell (sem administrador) não consegue fechá-la.
+if (Get-Process Divisa -ErrorAction SilentlyContinue) {
+    throw 'A Divisa esta rodando como administrador. Feche pela bandeja (Sair da Divisa) ou rode este comando num PowerShell como administrador.'
+}
 # Se ela estava passando o mouse para o Mac, os cursores do sistema estavam trocados por um vazio: restaura.
 Add-Type -Namespace Divisa -Name Cursores -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'
 [Divisa.Cursores]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0) | Out-Null
