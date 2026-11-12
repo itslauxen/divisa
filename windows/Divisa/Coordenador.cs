@@ -290,14 +290,19 @@ sealed class Coordenador
 
     // MARK: Mandando
 
-    private void ComecarAMandar(Point p)
+    /// Manda o texto copiado aqui, se mudou desde o último envio. Vai junto toda vez que o cursor sai deste computador:
+    /// ao passar para o outro (entrar) e ao devolver o cursor que o outro mandava (sair/liberar), igual ao Mac.
+    private void EnviarAreaSeMudou()
     {
         var seq = GetClipboardSequenceNumber();
-        if (seq != ultimaAreaEnviada)
-        {
-            try { if (Clipboard.ContainsText()) Enviar(new() { ["t"] = "area", ["texto"] = Clipboard.GetText() }); } catch (ExternalException) { }
-            ultimaAreaEnviada = seq;
-        }
+        if (seq == ultimaAreaEnviada) return;
+        try { if (Clipboard.ContainsText() && Clipboard.GetText() is { Length: > 0 } texto) Enviar(new() { ["t"] = "area", ["texto"] = texto }); } catch (ExternalException) { }
+        ultimaAreaEnviada = seq;
+    }
+
+    private void ComecarAMandar(Point p)
+    {
+        EnviarAreaSeMudou();
         var entrar = ComFracao("entrar", Fracao(p));
         entrar["teclado"] = Teclado(); // o layout pode ter mudado desde o "ola"
         Enviar(entrar);
@@ -344,6 +349,7 @@ sealed class Coordenador
             var f = Fracao(cursor);
             SoltarTudo();
             Estado = Estado.Local;
+            EnviarAreaSeMudou();
             Enviar(ComFracao("sair", f));
             if (Config.Portal) Portal.Mostrar(cursor, Config.Lado, entrando: false, Config);
             AoMudar?.Invoke();
@@ -414,7 +420,12 @@ sealed class Coordenador
         switch (Estado)
         {
             case Estado.Mandando: SoltarCursor(null); break;
-            case Estado.Obedecendo: SoltarTudo(); Estado = Estado.Local; AoMudar?.Invoke(); break;
+            case Estado.Obedecendo:
+                SoltarTudo();
+                Estado = Estado.Local;
+                if (avisar) EnviarAreaSeMudou();
+                AoMudar?.Invoke();
+                break;
         }
         if (avisar) Enviar(new() { ["t"] = "liberar" });
     }
