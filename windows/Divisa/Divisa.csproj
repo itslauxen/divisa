@@ -8,6 +8,8 @@
     <RootNamespace>Divisa</RootNamespace>
     <AssemblyName>Divisa</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- O mesmo desenho do AppIcon.icns do Mac (mac/AppIcon.icns), convertido para .ico. -->
+    <ApplicationIcon>divisa.ico</ApplicationIcon>
     <!-- Permite compilar no Mac para conferir; rodar, só no Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
