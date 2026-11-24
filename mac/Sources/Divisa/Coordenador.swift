@@ -478,6 +478,9 @@ final class Coordenador: ObservableObject {
             mandar(tipo, ev)
             return false
         case .obedecendo:
+            // Cmd/Ctrl/Shift/Option injetados voltam ao toque como um flagsChanged novo, sem a nossa marca
+            // (userData 0): se contassem como teclado físico, apertar Cmd no outro devolvia o cursor.
+            if tipo == .flagsChanged { return true }
             // Mouse ou teclado físico daqui: toma o controle de volta.
             diario("mexeram aqui; tomando o controle de volta")
             voltarParaLocal(avisar: true)
